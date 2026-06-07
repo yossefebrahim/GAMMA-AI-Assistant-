@@ -1,4 +1,19 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- The ONLY network use is the one-time model download (Principle I). INTERNET is required
+         to fetch it; ACCESS_NETWORK_STATE lets background_downloader react to connectivity. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+
+    <!-- background_downloader runs the ~2.4 GB download under an Android foreground service so it
+         survives app use/backgrounding (R2, Principle IV/VIII). FOREGROUND_SERVICE_DATA_SYNC is
+         the typed permission required on Android 14+; POST_NOTIFICATIONS shows the progress
+         notification (runtime-requested on Android 13+). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+
     <application
         android:label="ai_assistant"
         android:name="${applicationName}"
@@ -25,11 +40,34 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- Android 14+ (API 34+) requires a foreground service to DECLARE its
+             foregroundServiceType in the manifest; the runtime type requested must be a subset.
+             WorkManager's generic SystemForegroundService (pulled in by background_downloader) is
+             declared by the androidx.work library WITHOUT a type, so promoting the ~2.4 GB model
+             download to a foreground service throws
+             `IllegalArgumentException: foregroundServiceType 0x1 is not a subset of 0x0` and
+             crashes main (a crash-loop once WorkManager persists the job). Merge `dataSync` onto
+             it — matching our FOREGROUND_SERVICE_DATA_SYNC permission. -->
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync"
+            tools:node="merge" />
+
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- Disable Impeller → fall back to the Skia/OpenGL backend. The stable Flutter 3.44.1
+             engine defaults to Impeller-Vulkan, which crashes on this class of Mali GPU driver
+             (Mali-G68 on the A34 baseline): the driver rejects Impeller's R8 / RGBA_10101010
+             gralloc buffer formats ("Unrecognized and/or unsupported format ... TEXTURE + RENDER
+             + HWC"), killing the render thread (SIGKILL) within seconds of first frame. Skia is
+             solid on Mali. Revisit when Impeller's Vulkan backend supports these drivers. -->
+        <meta-data
+            android:name="io.flutter.embedding.android.EnableImpeller"
+            android:value="false" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
