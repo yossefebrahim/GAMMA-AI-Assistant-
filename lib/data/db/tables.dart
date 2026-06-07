@@ -1,0 +1,71 @@
+import 'package:drift/drift.dart';
+
+// Generated drift row classes are renamed (`*Row`) so they never collide with the pure-Dart
+// domain entities (Conversation, Message, ModelInstall, AppSettings). The repository layer maps
+// between rows and entities. Schema mirrors data-model.md.
+
+@DataClassName('ConversationRow')
+class Conversations extends Table {
+  IntColumn get id => integer().autoIncrement()();
+
+  /// Derived from the first user message, ≤40 chars (FR-021); null until the first message.
+  TextColumn get title => text().nullable()();
+
+  DateTimeColumn get createdAt => dateTime()();
+
+  /// Primary sort key for the history list (most-recent first).
+  DateTimeColumn get updatedAt => dateTime()();
+}
+
+@DataClassName('MessageRow')
+@TableIndex(name: 'idx_messages_conversation', columns: {#conversationId, #sequence})
+class Messages extends Table {
+  IntColumn get id => integer().autoIncrement()();
+
+  /// FK → conversations.id, ON DELETE CASCADE (FR-022).
+  IntColumn get conversationId =>
+      integer().references(Conversations, #id, onDelete: KeyAction.cascade)();
+
+  /// `MessageRole.name` — 'user' | 'assistant'.
+  TextColumn get role => text()();
+
+  TextColumn get content => text()();
+
+  /// Monotonic per conversation; defines turn order.
+  IntColumn get sequence => integer()();
+
+  DateTimeColumn get createdAt => dateTime()();
+
+  /// `MessageStatus.name` — 'complete' | 'streaming' | 'stoppedPartial'.
+  TextColumn get status => text()();
+}
+
+@DataClassName('ModelInstallRow')
+class ModelInstalls extends Table {
+  /// Constant model id, e.g. `gemma-4-e2b`.
+  TextColumn get id => text()();
+
+  /// `ModelInstallState.name`.
+  TextColumn get state => text()();
+
+  TextColumn get filePath => text().nullable()();
+  IntColumn get sizeBytes => integer().nullable()();
+  DateTimeColumn get installedAt => dateTime().nullable()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
+@DataClassName('AppSettingsRow')
+class AppSettingsTable extends Table {
+  /// Single-row table; id is always 1.
+  IntColumn get id => integer()();
+
+  /// `AppThemeMode.name` — 'dark' | 'light' | 'system'.
+  TextColumn get themeMode => text()();
+
+  DateTimeColumn get licenseAcknowledgedAt => dateTime().nullable()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}

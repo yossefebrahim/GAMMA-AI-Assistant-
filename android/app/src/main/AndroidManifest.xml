@@ -1,4 +1,18 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- The ONLY network use is the one-time model download (Principle I). INTERNET is required
+         to fetch it; ACCESS_NETWORK_STATE lets background_downloader react to connectivity. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+
+    <!-- background_downloader runs the ~2.4 GB download under an Android foreground service so it
+         survives app use/backgrounding (R2, Principle IV/VIII). FOREGROUND_SERVICE_DATA_SYNC is
+         the typed permission required on Android 14+; POST_NOTIFICATIONS shows the progress
+         notification (runtime-requested on Android 13+). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+
     <application
         android:label="ai_assistant"
         android:name="${applicationName}"
