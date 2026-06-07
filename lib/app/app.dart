@@ -18,7 +18,7 @@ class GemmaAssistantApp extends ConsumerWidget {
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
       themeMode: themeMode.material,
-      initialRoute: AppRoutes.onboarding,
+      initialRoute: AppRoutes.root,
       onGenerateRoute: AppRouter.onGenerateRoute,
     );
   }

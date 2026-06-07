@@ -1,0 +1,30 @@
+/// The single default model this slice ships (constitution: Gemma 4 E2B, ~2.4 GB).
+///
+/// Lean-scope (Principle IX): one model, no catalog UI yet. The download URL is the open,
+/// redistributable source referenced by clarification Q1 — set it to the actual published
+/// `.litertlm` artifact before an on-device run. It is the ONLY outbound URL in the app
+/// (Principle I); nothing else leaves the device.
+abstract final class ModelCatalog {
+  /// Stable model id (PK of the `model_install` row).
+  static const String modelId = 'gemma-4-e2b';
+
+  /// Human label, shown lowercased per the design voice: `model ( gemma 4 e2b )`.
+  static const String displayName = 'gemma 4 e2b';
+
+  /// Mono spec-line descriptor, e.g. `GEMMA 4 E2B · 2.4GB · ARM64-V8A`.
+  static const String specLine = 'GEMMA 4 E2B · 2.4GB · ARM64-V8A';
+
+  /// On-disk filename of the verified model after the atomic `.part` → final rename (R2).
+  static const String fileName = 'gemma-4-e2b.litertlm';
+
+  /// Download filename while in flight (never loadable as a model — FR-011).
+  static const String partFileName = 'gemma-4-e2b.litertlm.part';
+
+  /// App-private subdirectory under the documents dir where the model lives.
+  static const String directory = 'models';
+
+  /// Open, redistributable source for the one-time download (clarification Q1).
+  /// TODO(Q1): point at the actual published Gemma 4 E2B `.litertlm` artifact before shipping.
+  static const String downloadUrl =
+      'https://huggingface.co/google/gemma-4-e2b-it-litert/resolve/main/gemma-4-e2b.litertlm';
+}
