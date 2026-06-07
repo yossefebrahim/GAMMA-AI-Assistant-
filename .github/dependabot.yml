@@ -1,0 +1,41 @@
+version: 2
+updates:
+  # Dart/Flutter packages. Keeps pinned-version dependencies (research.md) honest.
+  - package-ecosystem: pub
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: deps
+    labels:
+      - dependencies
+
+  # GitHub Actions — bumps the SHA pins in .github/workflows/ (with version comments).
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: ci
+    labels:
+      - dependencies
+      - ci
+
+  # Android Gradle plugins (AGP / Kotlin declared in android/settings.gradle.kts).
+  # NOTE: the gradle ecosystem does NOT bump the Gradle wrapper (gradle-wrapper.properties) —
+  # update the wrapper version manually.
+  - package-ecosystem: gradle
+    directory: "/android"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: android
+    labels:
+      - dependencies
+      - android

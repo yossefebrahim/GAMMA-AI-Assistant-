@@ -1,0 +1,203 @@
+name: CI
+
+# Tests every pull request targeting main (and every push to main itself).
+# Mirrors tool/verify.sh so the same gates run locally and in CI.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# A newer commit on the same PR/branch cancels the older, in-flight run.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+# Least privilege: the read-only token is all CI needs. No job writes to the repo.
+permissions:
+  contents: read
+
+env:
+  # Pinned to the stable toolchain the project is developed against
+  # (see CLAUDE.md / specs/001-model-download-chat/research.md). Bump deliberately.
+  FLUTTER_VERSION: "3.44.1"
+  FLUTTER_CHANNEL: stable
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Static analysis + the project's executable invariants (Constitution gates).
+  # ---------------------------------------------------------------------------
+  analyze:
+    name: Analyze & invariants
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: pubspec.lock is committed and consistent
+        run: git diff --exit-code pubspec.lock
+
+      - name: Static analysis (infos & warnings are failures)
+        run: flutter analyze --fatal-infos --fatal-warnings
+
+      - name: Plugin-seam guard — flutter_gemma confined to the seam (Constitution VII)
+        run: bash tool/check_plugin_seam.sh
+
+      - name: Privacy/network-seam guard — no content leaves the device (Constitution I)
+        run: bash tool/check_network_seam.sh
+
+      - name: Generated code is up to date (drift / build_runner)
+        run: |
+          # NOTE: --delete-conflicting-outputs was removed in this build_runner; do not pass it.
+          dart run build_runner build
+          # Scope the staleness check to generated artifacts only, so an unrelated working-tree
+          # change can never be misattributed to stale codegen.
+          changed="$(git status --porcelain -- '*.g.dart' '*.drift.dart' '*.freezed.dart')"
+          if [[ -n "$changed" ]]; then
+            echo "::error::Generated code is stale. Run 'dart run build_runner build' locally and commit the result."
+            echo "$changed"
+            git --no-pager diff -- '*.g.dart' '*.drift.dart' '*.freezed.dart'
+            exit 1
+          fi
+
+      - name: Format check (advisory — does not fail the build)
+        if: always()
+        run: |
+          if ! dart format --output=none --set-exit-if-changed .; then
+            {
+              echo "### :warning: \`dart format\` would change files"
+              echo "Formatting is advisory for this repo. Run \`dart format .\` to clean up."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::Some files are not 'dart format'-clean (advisory, non-blocking)."
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Unit + widget tests (offline, fakes — no model, no device required).
+  # ---------------------------------------------------------------------------
+  test:
+    name: Unit & widget tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Run tests with coverage
+        run: flutter test --coverage --reporter expanded
+
+      - name: Coverage summary
+        if: always()
+        run: |
+          if [[ -f coverage/lcov.info ]]; then
+            total=$(grep -c '^DA:' coverage/lcov.info || true)
+            hit=$(grep -cE '^DA:[0-9]+,[1-9]' coverage/lcov.info || true)
+            pct="n/a"
+            if [[ "${total:-0}" -gt 0 ]]; then
+              pct=$(awk "BEGIN { printf \"%.1f\", ($hit/$total)*100 }")
+            fi
+            echo "### Line coverage: ${hit}/${total} (${pct}%)" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::No coverage/lcov.info produced."
+          fi
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-lcov
+          path: coverage/lcov.info
+          if-no-files-found: warn
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # Android compile smoke: proves the arm64 debug APK still builds end to end
+  # (Gradle / Kotlin / NDK / native plugins). Debug-signed; no secrets needed.
+  # ---------------------------------------------------------------------------
+  build-android:
+    name: Build Android APK (arm64 debug)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+
+      - name: Cache Gradle
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('android/**/*.gradle*', 'android/**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Build debug APK (arm64-v8a only)
+        run: flutter build apk --debug --target-platform android-arm64
+
+      - name: Upload APK
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: app-debug-arm64
+          path: build/app/outputs/flutter-apk/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # Single stable status check to require in branch protection. Stays valid even
+  # as jobs above are added/removed.
+  # ---------------------------------------------------------------------------
+  ci-passed:
+    name: CI Passed
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [analyze, test, build-android]
+    steps:
+      - name: Fail if any required job did not succeed
+        run: |
+          results='${{ join(needs.*.result, ",") }}'
+          echo "Upstream job results: ${results}"
+          # Anything that is not "success" fails the gate — including "skipped", so a future
+          # path-filtered/conditional job can't silently turn this required check green.
+          if [[ "${results}" == *failure* || "${results}" == *cancelled* || "${results}" == *skipped* ]]; then
+            echo "::error::One or more CI jobs failed, were cancelled, or were skipped."
+            exit 1
+          fi
+          echo "All CI jobs passed."

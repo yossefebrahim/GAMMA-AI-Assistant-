@@ -1,0 +1,11 @@
+# Default owner for everything in the repo.
+* @yossefebrahim
+
+# Constitution-critical seams — changes here deserve extra scrutiny.
+/tool/check_plugin_seam.sh      @yossefebrahim
+/tool/check_network_seam.sh     @yossefebrahim
+/lib/infrastructure/gemma/      @yossefebrahim
+/lib/data/model/                @yossefebrahim
+
+# CI/CD definition.
+/.github/                       @yossefebrahim
