@@ -5,22 +5,17 @@ publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.10.0-213.0.dev
+  sdk: ^3.10.7
 
 # Stack & target versions are governed by specs/001-model-download-chat/research.md.
 # flutter_gemma is permitted to be imported ONLY in lib/infrastructure/gemma/ (Principle VII).
 #
-# SDK-DRIVEN DEVIATIONS FROM research.md PINS — this machine runs the prerelease Dart
-# 3.10.0-213.0.dev, which sorts BELOW 3.10.0 stable, so the research "newest" pins do not
-# resolve here. Versions below are the highest that resolve on this SDK:
-#   * flutter_gemma 0.12.6  (research target 0.16.4 needs Dart >=3.10.7 via
-#     dart_sentencepiece_tokenizer). NOT imported until Phase 4 (T032); bump to 0.16.4 once a
-#     stable Dart >=3.10.7 SDK is installed — the change is confined to the GemmaService seam.
-#   * drift / drift_dev 2.31.0, drift_flutter 0.2.8  (research target 2.33.0 / 0.3.0 needs
-#     Dart >=3.10.0 stable). 2.31.0 provides everything this feature uses (reactive watch,
-#     NativeDatabase.memory, codegen).
-# flutter_riverpod 3.3.1, background_downloader 9.5.5, path_provider 2.1.5, google_fonts, and
-# device_info_plus (>=11.4.0) all match research intent.
+# On stable Flutter 3.44.1 / Dart 3.12.1 the research.md pins resolve natively — the earlier
+# prerelease-SDK deviations have been removed:
+#   * flutter_gemma ^0.15.0 — native Gemma 4 support (ModelType.gemma4 + .litertlm). Requires Dart
+#     >=3.10.7 (via dart_sentencepiece_tokenizer). Imported ONLY in the GemmaService seam.
+#   * drift / drift_dev ^2.33.0, drift_flutter ^0.3.0 — ride sqlite3 ^3.x (which flutter_gemma 0.15
+#     also requires), so no sqlite3 dependency_override is needed.
 dependencies:
   flutter:
     sdk: flutter
@@ -30,15 +25,16 @@ dependencies:
   # Pure-Dart annotations (@immutable) for the Flutter-free domain layer.
   meta: ^1.17.0
 
-  # Model runtime (LiteRT-LM / MediaPipe) — isolated behind GemmaService (R1). See deviation note.
-  flutter_gemma: 0.12.6
+  # Model runtime (LiteRT-LM / MediaPipe) — isolated behind GemmaService (R1).
+  # ^0.15.0 for native Gemma 4 (ModelType.gemma4 + .litertlm), which arrived in 0.14.1+.
+  flutter_gemma: ^0.15.0
 
   # One-time model download under an Android foreground service (R2).
   background_downloader: ^9.5.5
 
-  # Reactive, type-safe SQLite persistence (R3).
-  drift: ^2.31.0
-  drift_flutter: ^0.2.8
+  # Reactive, type-safe SQLite persistence (R3). 2.33/0.3 ride sqlite3 ^3.x (shared with gemma).
+  drift: ^2.33.0
+  drift_flutter: ^0.3.0
 
   # State management — manual Notifier, code-gen optional (R5).
   flutter_riverpod: 3.3.1
@@ -57,7 +53,7 @@ dev_dependencies:
     sdk: flutter
 
   # drift codegen (run: dart run build_runner build).
-  drift_dev: ^2.31.0
+  drift_dev: ^2.33.0
   build_runner: ^2.15.0
 
   flutter_lints: ^6.0.0

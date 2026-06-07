@@ -24,7 +24,9 @@ abstract final class ModelCatalog {
   static const String directory = 'models';
 
   /// Open, redistributable source for the one-time download (clarification Q1).
-  /// TODO(Q1): point at the actual published Gemma 4 E2B `.litertlm` artifact before shipping.
+  /// Public `litert-community` Gemma 4 E2B `.litertlm` artifact — NO HuggingFace token/auth needed
+  /// (downloaded with a plain GET via background_downloader). Verified ~2.41 GB, resolves
+  /// 302 → CDN → 200. The ONLY outbound URL in the app (Principle I); nothing else leaves the device.
   static const String downloadUrl =
-      'https://huggingface.co/google/gemma-4-e2b-it-litert/resolve/main/gemma-4-e2b.litertlm';
+      'https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm';
 }

@@ -8,18 +8,30 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// `flutter_gemma` (Constitution Principle VII, enforced by tool/check_plugin_seam.sh). Everything
 /// else depends on the interface and is tested with `FakeGemmaService`.
 ///
-/// VERSION NOTE: written against the installed flutter_gemma **0.12.6** (the prerelease Dart SDK
-/// caps it there — see pubspec.yaml). In 0.12.6 there is no dedicated `ModelType.gemma4` /
-/// `ModelFileType.litertlm`: Gemma is `ModelType.gemmaIt` and `ModelFileType.task` already routes
-/// `.litertlm` through MediaPipe. When the project moves to a stable Dart ≥3.10.7 and
-/// flutter_gemma 0.16.4, switch to `ModelType.gemma4` + the litertlm file type here — and ONLY
-/// here, because the seam isolates the change.
+/// VERSION NOTE: written against flutter_gemma **0.15.3** on stable Dart 3.12.1. Gemma 4 E2B is
+/// loaded as `ModelType.gemma4` from a `ModelFileType.litertlm` artifact (LiteRT-LM handles the
+/// chat template on Android). The file is downloaded out-of-band by `BackgroundModelDownloader`
+/// (foreground service) and handed to the modern `FlutterGemma.installModel().fromFile(...)`
+/// builder, which references it in place (no copy). Any future model/runtime change stays confined
+/// to this seam.
 class FlutterGemmaService implements GemmaService {
   static const int _maxTokens = 2048;
+
+  /// flutter_gemma's `ServiceRegistry` must be initialized once before `installModel()`; it throws
+  /// otherwise. `main.dart` can't do it (plugin-seam rule), so we do it lazily + idempotently here.
+  /// No `huggingFaceToken` — the model is a public artifact (Principle I: the only network egress is
+  /// the download, and that runs through `BackgroundModelDownloader`, not this seam).
+  static bool _initialized = false;
 
   InferenceModel? _model;
   InferenceChat? _chat;
   bool _loaded = false;
+
+  Future<void> _ensureInitialized() async {
+    if (_initialized) return;
+    await FlutterGemma.initialize();
+    _initialized = true;
+  }
 
   @override
   bool get isLoaded => _loaded;
@@ -39,9 +51,12 @@ class FlutterGemmaService implements GemmaService {
     // Release any previously-loaded model first → exactly one active (Principle VIII).
     await close();
     try {
+      await _ensureInitialized();
+      // `.fromFile()` references the already-downloaded artifact in place (FileSourceHandler does
+      // not copy) and sets it as the active inference model. Gemma 4 E2B `.litertlm`.
       await FlutterGemma.installModel(
-        modelType: ModelType.gemmaIt,
-        fileType: ModelFileType.task,
+        modelType: ModelType.gemma4,
+        fileType: ModelFileType.litertlm,
       ).fromFile(filePath).install();
 
       // Prefer GPU; fall back to CPU if the backend can't initialize / OOMs on an 8 GB device (R1).
@@ -50,7 +65,7 @@ class FlutterGemmaService implements GemmaService {
         throw const ModelLoadException('could not initialize a backend for the model');
       }
       _chat = await _model!.createChat(
-        modelType: ModelType.gemmaIt,
+        modelType: ModelType.gemma4,
         supportImage: false,
         supportAudio: false,
         supportsFunctionCalls: false,
