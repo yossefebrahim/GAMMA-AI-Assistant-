@@ -1,4 +1,5 @@
 import 'package:ai_assistant/domain/entities/conversation.dart';
+import 'package:ai_assistant/domain/entities/image_attachment.dart';
 import 'package:ai_assistant/domain/entities/message.dart';
 
 /// Abstraction over `drift` persistence (R3) — the only seam for conversation/message storage.
@@ -18,9 +19,17 @@ abstract interface class ConversationRepository {
   /// Create a new, empty conversation and return it (FR-019).
   Future<Conversation> createConversation();
 
-  /// Append a user message (validates non-empty after trim — throws [ArgumentError] otherwise).
-  /// Bumps `updatedAt`; sets the conversation title from the first message if still null (FR-021).
-  Future<Message> appendUserMessage(int conversationId, String text);
+  /// Append a user message, optionally with an [image] (FR-012). Validates that the message has
+  /// non-empty text after trim **OR** an image (FR-004) — throws [ArgumentError] when both are
+  /// empty. When [image] is given, its bytes have already been persisted to app-private storage by
+  /// the caller (`ImageFileStore`) and `image.path` is the STORED path. Bumps `updatedAt`; sets the
+  /// conversation title from the first message's text if still null, falling back to a label for an
+  /// image-only first message (FR-021).
+  Future<Message> appendUserMessage(
+    int conversationId,
+    String text, {
+    ImageAttachment? image,
+  });
 
   /// Create an assistant message in `streaming` state; returns its id (FR-013).
   Future<int> beginAssistantMessage(int conversationId);
@@ -35,6 +44,7 @@ abstract interface class ConversationRepository {
   /// Ordered turns for context assembly, including stopped-partial turns (FR-017).
   Future<List<Message>> loadTurns(int conversationId);
 
-  /// Delete a conversation and cascade its messages, making them unretrievable (FR-022).
+  /// Delete a conversation: removes its image files (FR-019), then deletes the row so its messages
+  /// cascade, making them unretrievable (FR-022). No orphaned image files remain.
   Future<void> deleteConversation(int conversationId);
 }

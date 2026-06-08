@@ -1,3 +1,5 @@
+import 'package:ai_assistant/domain/entities/model_capabilities.dart';
+
 /// The single default model this slice ships (constitution: Gemma 4 E2B, ~2.4 GB).
 ///
 /// Lean-scope (Principle IX): one model, no catalog UI yet. The download URL is the open,
@@ -7,6 +9,15 @@
 abstract final class ModelCatalog {
   /// Stable model id (PK of the `model_install` row).
   static const String modelId = 'gemma-4-e2b';
+
+  /// Whether the default model understands images — DATA, not a per-model `if` (Principle III,
+  /// 002 R1). Gemma 4 E2B is image-capable; this value flows catalog → `loadModel` →
+  /// `GemmaService.capabilities` → `modelCapabilitiesProvider`, which the composer gates on.
+  static const bool supportsImage = true;
+
+  /// The active model's capabilities as a single data value (Principle III). Passed into
+  /// `GemmaService.loadModel` so the seam enables the matching modalities and reports them back.
+  static const ModelCapabilities capabilities = ModelCapabilities(image: supportsImage);
 
   /// Human label, shown lowercased per the design voice: `model ( gemma 4 e2b )`.
   static const String displayName = 'gemma 4 e2b';

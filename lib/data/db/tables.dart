@@ -38,6 +38,15 @@ class Messages extends Table {
 
   /// `MessageStatus.name` — 'complete' | 'streaming' | 'stoppedPartial'.
   TextColumn get status => text()();
+
+  /// Absolute app-private path of the attached image file (002, schema v2). Null for text-only
+  /// turns and all assistant turns. The bytes live as a file under `…/images/`; only the path is
+  /// stored here (R5). Added by the v1→v2 migration as nullable, so existing rows stay valid.
+  TextColumn get imagePath => text().nullable()();
+
+  /// Best-effort MIME type of [imagePath] (e.g. `image/jpeg`), for rendering/debugging (002,
+  /// schema v2). Null when there is no image.
+  TextColumn get imageMimeType => text().nullable()();
 }
 
 @DataClassName('ModelInstallRow')

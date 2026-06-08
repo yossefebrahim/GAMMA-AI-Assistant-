@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:ai_assistant/app/theme/app_colors.dart';
 import 'package:ai_assistant/app/theme/app_spacing.dart';
 import 'package:ai_assistant/app/theme/app_text.dart';
@@ -42,12 +44,19 @@ class MessageBubble extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // The attached image renders in place above any text (FR-012). Persisted history is
+          // shown regardless of the active model's current capabilities (FR-017) — this reads from
+          // the stored file, not from `capabilities`.
+          if (message.image != null) ...[
+            _BubbleImage(path: message.image!.path),
+            if (message.content.isNotEmpty) const SizedBox(height: AppSpacing.s8),
+          ],
           if (isStreaming && message.content.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: AppSpacing.s4),
               child: DotPulse(color: colors.accent),
             )
-          else
+          else if (message.content.isNotEmpty || message.image == null)
             Text(
               message.content,
               style: theme.textTheme.bodyLarge?.copyWith(color: colors.textPrimary),
@@ -65,6 +74,44 @@ class MessageBubble extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: AppSpacing.s4),
         child: bubble,
+      ),
+    );
+  }
+}
+
+/// The in-bubble image (R6): rounded, hairline border, contained, height-capped, with a screen-
+/// reader label (Principle VI). A missing file shows a quiet monochrome placeholder rather than a
+/// crash (FR-012 — history may outlive a file in degraded states).
+class _BubbleImage extends StatelessWidget {
+  const _BubbleImage({required this.path});
+
+  final String path;
+
+  static const double _maxHeight = 240;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<AppColors>()!;
+    return Semantics(
+      label: 'attached image',
+      image: true,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(AppSpacing.radiusControl),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppSpacing.radiusControl),
+            border: Border.all(color: colors.outline, width: AppSpacing.hairline),
+          ),
+          constraints: const BoxConstraints(maxHeight: _maxHeight),
+          child: Image.file(
+            File(path),
+            fit: BoxFit.contain,
+            errorBuilder: (context, error, stack) => Padding(
+              padding: const EdgeInsets.all(AppSpacing.s24),
+              child: Icon(Icons.broken_image_outlined, color: colors.textSecondary),
+            ),
+          ),
+        ),
       ),
     );
   }

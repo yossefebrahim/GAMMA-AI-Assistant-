@@ -18,6 +18,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({super.key});
 
+  static const Key errorBannerKey = Key('chat-error-banner');
+  static const Key errorDismissKey = Key('chat-error-dismiss');
+
   @override
   ConsumerState<ChatScreen> createState() => _ChatScreenState();
 }
@@ -165,6 +168,7 @@ class _ChatBodyState extends ConsumerState<_ChatBody> {
   @override
   Widget build(BuildContext context) {
     final conversationId = ref.watch(chatControllerProvider.select((s) => s.conversationId));
+    final errorMessage = ref.watch(chatControllerProvider.select((s) => s.errorMessage));
 
     return Column(
       children: [
@@ -173,6 +177,11 @@ class _ChatBodyState extends ConsumerState<_ChatBody> {
               ? const _EmptyChat()
               : _MessageList(conversationId: conversationId, scroll: _scroll, onChanged: _scrollToBottom),
         ),
+        if (errorMessage != null)
+          _ErrorBanner(
+            message: errorMessage,
+            onDismiss: () => ref.read(chatControllerProvider.notifier).dismissError(),
+          ),
         const Padding(
           padding: EdgeInsets.fromLTRB(
             AppSpacing.s16,
@@ -183,6 +192,49 @@ class _ChatBodyState extends ConsumerState<_ChatBody> {
           child: SafeArea(top: false, child: Composer()),
         ),
       ],
+    );
+  }
+}
+
+/// A clear, dismissible failure message (FR-020) — e.g. an image the model couldn't process. Uses
+/// the reserved accent for the error glyph (design-system §2/§8); the conversation stays usable.
+class _ErrorBanner extends StatelessWidget {
+  const _ErrorBanner({required this.message, required this.onDismiss});
+
+  final String message;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.extension<AppColors>()!;
+    return Container(
+      key: ChatScreen.errorBannerKey,
+      margin: const EdgeInsets.fromLTRB(AppSpacing.s16, AppSpacing.s8, AppSpacing.s16, 0),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.s12, vertical: AppSpacing.s8),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainer,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusControl),
+        border: Border.all(color: colors.outline),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.error_outline, color: colors.accent, size: AppSpacing.s24),
+          const SizedBox(width: AppSpacing.s8),
+          Expanded(
+            child: Text(
+              message,
+              style: theme.textTheme.bodyMedium?.copyWith(color: colors.textSecondary),
+            ),
+          ),
+          IconButton(
+            key: ChatScreen.errorDismissKey,
+            tooltip: 'dismiss',
+            onPressed: onDismiss,
+            icon: Icon(Icons.close, color: colors.textSecondary),
+          ),
+        ],
+      ),
     );
   }
 }

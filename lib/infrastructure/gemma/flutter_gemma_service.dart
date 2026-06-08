@@ -1,7 +1,11 @@
 import 'package:ai_assistant/domain/entities/chat_turn.dart';
+import 'package:ai_assistant/domain/entities/image_input.dart';
 import 'package:ai_assistant/domain/entities/model_capabilities.dart';
 import 'package:ai_assistant/domain/services/gemma_service.dart';
-import 'package:flutter_gemma/flutter_gemma.dart';
+// `flutter_gemma` exports its OWN `ImageProcessingException` from `image_processor.dart`; hide it
+// so the domain `ImageProcessingException` (from gemma_service.dart) is the unprefixed type this
+// seam throws. The plugin's image failures are caught generically and re-mapped (FR-020).
+import 'package:flutter_gemma/flutter_gemma.dart' hide ImageProcessingException;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// THE single concrete [GemmaService] — the ONLY file in the codebase permitted to import
@@ -14,6 +18,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// (foreground service) and handed to the modern `FlutterGemma.installModel().fromFile(...)`
 /// builder, which references it in place (no copy). Any future model/runtime change stays confined
 /// to this seam.
+///
+/// IMAGE INPUT (002): when the active model's [ModelCapabilities.image] is true, the chat is created
+/// with `supportImage: true, maxNumImages: 1` (vision modality on), the current prompt and any
+/// image-bearing history turns are sent via `Message.withImage`/`Message.imageOnly`, and the
+/// plugin's image decode/validate/resize (its `ImageProcessor`, 896², 10 MB) runs natively off the
+/// UI isolate (R1/R4). Image failures are mapped to a domain [ImageProcessingException] (FR-020).
 class FlutterGemmaService implements GemmaService {
   static const int _maxTokens = 2048;
 
@@ -26,6 +36,7 @@ class FlutterGemmaService implements GemmaService {
   InferenceModel? _model;
   InferenceChat? _chat;
   bool _loaded = false;
+  ModelCapabilities _capabilities = ModelCapabilities.textOnly;
 
   Future<void> _ensureInitialized() async {
     if (_initialized) return;
@@ -41,13 +52,16 @@ class FlutterGemmaService implements GemmaService {
     if (!_loaded) {
       throw StateError('capabilities read before a model was loaded');
     }
-    // Text-only scope this slice (FR-016, Principle III). When multimodal Gemma is enabled, read
-    // the active model's modality flags here instead of returning a fixed value.
-    return ModelCapabilities.textOnly;
+    // Capabilities are DATA from the catalog, passed into loadModel (Principle III) — never a fixed
+    // value or a per-model `if`.
+    return _capabilities;
   }
 
   @override
-  Future<void> loadModel(String filePath) async {
+  Future<void> loadModel(
+    String filePath, {
+    ModelCapabilities capabilities = ModelCapabilities.textOnly,
+  }) async {
     // Release any previously-loaded model first → exactly one active (Principle VIII).
     await close();
     try {
@@ -60,17 +74,22 @@ class FlutterGemmaService implements GemmaService {
       ).fromFile(filePath).install();
 
       // Prefer GPU; fall back to CPU if the backend can't initialize / OOMs on an 8 GB device (R1).
-      _model = await _activate(PreferredBackend.gpu) ?? await _activate(PreferredBackend.cpu);
+      // The model is created with vision enabled (and one image cap) when the catalog declares it.
+      _model = await _activate(PreferredBackend.gpu, supportImage: capabilities.image) ??
+          await _activate(PreferredBackend.cpu, supportImage: capabilities.image);
       if (_model == null) {
         throw const ModelLoadException('could not initialize a backend for the model');
       }
+      // Vision modality on the chat session follows the catalog capability
+      // (enableVisionModality: supportImage), one image per message this slice (FR-005/FR-006, R1).
       _chat = await _model!.createChat(
         modelType: ModelType.gemma4,
-        supportImage: false,
+        supportImage: capabilities.image,
         supportAudio: false,
         supportsFunctionCalls: false,
         isThinking: false,
       );
+      _capabilities = capabilities;
       _loaded = true;
     } on ModelLoadException {
       await close();
@@ -81,11 +100,16 @@ class FlutterGemmaService implements GemmaService {
     }
   }
 
-  Future<InferenceModel?> _activate(PreferredBackend backend) async {
+  Future<InferenceModel?> _activate(
+    PreferredBackend backend, {
+    required bool supportImage,
+  }) async {
     try {
       return await FlutterGemma.getActiveModel(
         maxTokens: _maxTokens,
         preferredBackend: backend,
+        supportImage: supportImage,
+        maxNumImages: supportImage ? 1 : null,
       );
     } catch (_) {
       return null;
@@ -96,27 +120,66 @@ class FlutterGemmaService implements GemmaService {
   Stream<String> generate({
     required List<ChatTurn> history,
     required String prompt,
+    ImageInput? image,
   }) async* {
     final chat = _chat;
     if (!_loaded || chat == null) {
       throw StateError('generate() called with no model loaded');
     }
-    // The caller owns context assembly + sliding window (FR-017/Q2), so rebuild the chat history
-    // from what it passes, then add the new prompt. (Re-ingesting history each turn is the cost of
-    // a stateless seam; a kept-warm session is a later optimization.)
-    await chat.clearHistory(
-      replayHistory: history
-          .map((turn) => Message.text(text: turn.text, isUser: turn.isUser))
-          .toList(),
-    );
-    await chat.addQueryChunk(Message.text(text: prompt, isUser: true));
-
-    await for (final response in chat.generateChatResponseAsync()) {
-      if (response is TextResponse) {
-        yield response.token;
-      }
-      // ThinkingResponse / FunctionCallResponse are ignored this slice (text-only, FR-016).
+    // The caller must gate on capabilities before sending an image (FR-005, contract #12).
+    if (image != null && !_capabilities.image) {
+      throw StateError('generate(image:) called while the model does not support images');
     }
+
+    final involvesImage = image != null || history.any((turn) => turn.image != null);
+    try {
+      // The caller owns context assembly + sliding window (FR-017/Q2), so rebuild the chat history
+      // from what it passes — including any image-bearing turns (FR-015/FR-016) — then add the new
+      // prompt. (Re-ingesting history each turn is the cost of a stateless seam; a kept-warm
+      // session is a later optimization — R1 risk.)
+      await chat.clearHistory(
+        replayHistory: history.map(_toPluginMessage).toList(),
+      );
+      await chat.addQueryChunk(_promptMessage(prompt, image));
+
+      await for (final response in chat.generateChatResponseAsync()) {
+        if (response is TextResponse) {
+          yield response.token;
+        }
+        // ThinkingResponse / FunctionCallResponse are ignored this slice (text + image only).
+      }
+    } catch (error) {
+      // Map image decode/validation/resize/OOM failures to a typed, user-facing failure (FR-020,
+      // Principle V). Text-only failures propagate unchanged so the chat controller keeps the
+      // partial reply as stopped-partial.
+      if (involvesImage && error is! StateError) {
+        throw ImageProcessingException('could not process the image', cause: error);
+      }
+      rethrow;
+    }
+  }
+
+  /// Map a history [turn] to the plugin's `Message`, carrying its image when present.
+  Message _toPluginMessage(ChatTurn turn) {
+    final image = turn.image;
+    if (image == null) {
+      return Message.text(text: turn.text, isUser: turn.isUser);
+    }
+    if (turn.text.isEmpty) {
+      return Message.imageOnly(imageBytes: image.bytes, isUser: turn.isUser);
+    }
+    return Message.withImage(text: turn.text, imageBytes: image.bytes, isUser: turn.isUser);
+  }
+
+  /// Build the current prompt message: text-only, image+text, or image-only (empty text, FR-004).
+  Message _promptMessage(String prompt, ImageInput? image) {
+    if (image == null) {
+      return Message.text(text: prompt, isUser: true);
+    }
+    if (prompt.isEmpty) {
+      return Message.imageOnly(imageBytes: image.bytes, isUser: true);
+    }
+    return Message.withImage(text: prompt, imageBytes: image.bytes, isUser: true);
   }
 
   @override
@@ -137,7 +200,7 @@ class FlutterGemmaService implements GemmaService {
 }
 
 /// Kept-alive [GemmaService] (R5) — never auto-disposed, so the ~2.4 GB model doesn't thrash on
-/// rebuilds. The model is loaded/released explicitly by the chat session lifecycle (T033).
+/// rebuilds. The model is loaded/released explicitly by the chat session lifecycle.
 final gemmaServiceProvider = Provider<GemmaService>((ref) {
   final service = FlutterGemmaService();
   ref.onDispose(service.close);
