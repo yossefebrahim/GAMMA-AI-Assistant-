@@ -67,6 +67,11 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
 
+  # THROWAWAY (003 Phase 0 spike): on-device audio-grounding verification only
+  # (integration_test/spike_audio_grounding_test.dart). Remove with the spike.
+  integration_test:
+    sdk: flutter
+
   # drift codegen (run: dart run build_runner build).
   drift_dev: ^2.33.0
   build_runner: ^2.15.0
