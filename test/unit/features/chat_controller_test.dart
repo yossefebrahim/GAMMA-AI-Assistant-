@@ -66,6 +66,26 @@ void main() {
     expect(gemma.stopCount, 1);
   });
 
+  test('a delta produced concurrently with stop is retained, not dropped (FR-014)', () async {
+    // 'LAST' is delivered by the fake at the moment stop() runs — i.e. after _stopRequested is set.
+    // With a break-before-write loop it would be discarded; the controller must keep it.
+    gemma
+      ..scriptedDeltas = ['aa', 'bb', 'cc', 'dd']
+      ..deltaInterval = const Duration(milliseconds: 25)
+      ..trailingDeltaAfterStop = 'LAST';
+
+    final sending = controller().send('hi');
+    await Future<void>.delayed(const Duration(milliseconds: 40));
+    await controller().stop();
+    await sending;
+
+    final assistant = (await repo().loadTurns(read().conversationId!))
+        .firstWhere((m) => m.role == MessageRole.assistant);
+    expect(assistant.status, MessageStatus.stoppedPartial);
+    expect(assistant.content, endsWith('LAST'),
+        reason: 'the token delivered at stop is retained (FR-014)');
+  });
+
   test('send is ignored while already generating (Q4 single in-flight)', () async {
     gemma.scriptedDeltas = ['x', 'y', 'z', 'w'];
     gemma.deltaInterval = const Duration(milliseconds: 25);

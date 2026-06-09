@@ -65,18 +65,26 @@ class ChatController extends Notifier<ChatState> {
 
     final repo = ref.read(conversationRepositoryProvider);
     final imageStore = ref.read(imageFileStoreProvider);
-    var conversationId = state.conversationId;
-    conversationId ??= (await repo.createConversation()).id;
 
-    // Persist the image bytes as an app-private file, record it on the user message, and read the
-    // bytes just-in-time for this prompt (FR-012, R5).
+    // Persist the image bytes as an app-private file FIRST, and read the bytes just-in-time for this
+    // prompt (FR-012, R5). An oversized/unreadable image is rejected here (FR-021) before anything
+    // is created — surface "pick another" and abort the send.
     ImageAttachment? attachment;
     ImageInput? imageInput;
     if (image != null) {
-      final storedPath = await imageStore.persist(image.path, extension: _extensionOf(image.path));
-      attachment = ImageAttachment(path: storedPath, mimeType: image.mimeType);
-      imageInput = ImageInput(await imageStore.readBytes(storedPath), mimeType: image.mimeType);
+      try {
+        final storedPath =
+            await imageStore.persist(image.path, extension: _extensionOf(image.path));
+        attachment = ImageAttachment(path: storedPath, mimeType: image.mimeType);
+        imageInput = ImageInput(await imageStore.readBytes(storedPath), mimeType: image.mimeType);
+      } on ArgumentError {
+        ref.read(attachmentControllerProvider.notifier).rejectPending();
+        return;
+      }
     }
+
+    var conversationId = state.conversationId;
+    conversationId ??= (await repo.createConversation()).id;
 
     await repo.appendUserMessage(conversationId, trimmed, image: attachment);
 
@@ -98,9 +106,11 @@ class ChatController extends Notifier<ChatState> {
     try {
       await for (final delta
           in gemma.generate(history: history, prompt: trimmed, image: imageInput)) {
-        if (_stopRequested) break;
+        // Retain every delta the model produced before honoring stop (FR-014): write first, then
+        // break. A token delivered concurrently with stop must not be dropped.
         buffer.write(delta);
         await repo.updateAssistantContent(assistantId, buffer.toString());
+        if (_stopRequested) break;
       }
       await repo.finalizeAssistantMessage(
         assistantId,

@@ -1,6 +1,3 @@
-import 'dart:io';
-
-import 'package:ai_assistant/data/images/image_file_store.dart';
 import 'package:ai_assistant/domain/services/media_permission_service.dart';
 import 'package:ai_assistant/domain/services/media_picker_service.dart';
 import 'package:ai_assistant/features/chat/chat_providers.dart';
@@ -84,8 +81,14 @@ class AttachmentController extends Notifier<AttachmentState> {
   AttachmentState build() {
     // Capability-driven clearing (FR-008): if the active model flips to image-unsupported while an
     // image is pending, drop it and surface a brief note. Capabilities are DATA (Principle III).
+    //
+    // Guard on a genuinely LOADED model (modelSessionReadyProvider): a loading or FAILED session
+    // also reports textOnly, but that is not a "this model can't take images" situation — the chat
+    // screen surfaces loading/failure on its own. Dropping the image there would mislead the user
+    // (002 audit: a 0.16.x model-load failure surfaced as "image removed — this model does not
+    // accept images"). The note now fires only on a real switch to a loaded text-only model.
     ref.listen(modelCapabilitiesProvider, (previous, next) {
-      if (!next.image && state.pending != null) {
+      if (!next.image && state.pending != null && ref.read(modelSessionReadyProvider)) {
         state = const AttachmentState(note: clearedOnModelSwitchNote);
       }
     });
@@ -101,7 +104,7 @@ class AttachmentController extends Notifier<AttachmentState> {
   Future<void> pickFromLibrary() async {
     try {
       final picked = await _picker.pickFromLibrary();
-      await _setPending(picked);
+      _setPending(picked);
     } on MediaAccessException {
       state = state.copyWith(permissionPrompt: AttachmentPrompt.permissionDenied);
     }
@@ -135,30 +138,22 @@ class AttachmentController extends Notifier<AttachmentState> {
   Future<void> _capture() async {
     try {
       final picked = await _picker.pickFromCamera();
-      await _setPending(picked);
+      _setPending(picked);
     } on MediaAccessException {
       state = state.copyWith(permissionPrompt: AttachmentPrompt.permissionDenied);
     }
   }
 
-  Future<void> _setPending(PickedImage? picked) async {
+  void _setPending(PickedImage? picked) {
     if (picked == null) return; // cancel — leave the prior state untouched (FR-003 / edge: cancel)
-    // Best-effort pick-time rejection of an empty / oversized image (FR-021); the file store and
-    // the seam validate authoritatively at send. A path we can't stat (e.g. a test temp file) is
-    // allowed through — the later guards still apply.
-    try {
-      final length = await File(picked.path).length();
-      if (length == 0 || length > ImageFileStore.maxBytes) {
-        state = const AttachmentState(error: pickAnotherError);
-        return;
-      }
-    } on FileSystemException {
-      // Can't stat — defer to the store/seam guards.
-    }
     state = AttachmentState(
       pending: PendingAttachment(path: picked.path, mimeType: picked.mimeType),
     );
   }
+
+  /// Reject the pending image and prompt for another (FR-021) — called when the image store rejects
+  /// an oversized/unreadable file at send time. Keeps text chat usable.
+  void rejectPending() => state = const AttachmentState(error: pickAnotherError);
 
   /// Open the OS app-settings page so the user can grant a permanently-denied permission (FR-010).
   Future<void> openSettings() async {

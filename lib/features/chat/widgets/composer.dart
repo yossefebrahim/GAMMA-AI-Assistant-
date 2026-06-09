@@ -172,7 +172,9 @@ class _ComposerState extends ConsumerState<Composer> {
               child: Text(
                 attachmentMessage,
                 key: Composer.attachmentMessageKey,
-                style: theme.textTheme.labelSmall?.copyWith(color: colors.textSecondary),
+                // Essential lowercase guidance reads as body, not the uppercase Space Mono spec face
+                // (design-system §3); matches the chat error banner's bodyMedium.
+                style: theme.textTheme.bodyMedium?.copyWith(color: colors.textSecondary),
               ),
             ),
           if (pending != null)

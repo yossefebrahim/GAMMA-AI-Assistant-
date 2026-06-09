@@ -30,6 +30,11 @@ class FakeGemmaService implements GemmaService {
   /// Delay between scripted deltas (default: emit synchronously).
   Duration deltaInterval = Duration.zero;
 
+  /// When set, [stop] emits this one final delta BEFORE closing the stream — simulating a token the
+  /// plugin produced concurrently with `stopGeneration()`. Lets a test prove the caller retains it
+  /// (FR-014) rather than dropping it.
+  String? trailingDeltaAfterStop;
+
   // --- observed state, for assertions ---
   String? loadedPath;
   ModelCapabilities? loadedCapabilities;
@@ -121,6 +126,10 @@ class FakeGemmaService implements GemmaService {
     _stopped = true;
     final controller = _controller;
     if (controller != null && !controller.isClosed) {
+      // Deliver one final, already-produced token concurrently with stop (FR-014 path).
+      if (trailingDeltaAfterStop != null) {
+        controller.add(trailingDeltaAfterStop!);
+      }
       await controller.close();
     }
   }

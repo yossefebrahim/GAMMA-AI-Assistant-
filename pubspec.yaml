@@ -27,6 +27,10 @@ dependencies:
 
   # Model runtime (LiteRT-LM / MediaPipe) — isolated behind GemmaService (R1).
   # ^0.15.0 for native Gemma 4 (ModelType.gemma4 + .litertlm), which arrived in 0.14.1+.
+  # NOTE: a 0.16.x experiment (audit 2026-06-08) regressed image input on the A34 — its new native
+  # LiteRT-LM (v0.12.0-a) failed to load the vision-enabled model, flipping capabilities to text-only
+  # and surfacing "image removed — this model does not accept images". Reverted to ^0.15.0 (verified
+  # 0.15.3). See specs/002-image-input-vision/diagnosis-and-audit-2026-06-08.md.
   flutter_gemma: ^0.15.0
 
   # One-time model download under an Android foreground service (R2).

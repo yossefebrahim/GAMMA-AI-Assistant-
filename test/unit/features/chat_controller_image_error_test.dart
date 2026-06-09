@@ -82,6 +82,24 @@ void main() {
     expect(assistant.content, 'hi again');
   });
 
+  test('an empty/unreadable image is rejected with "pick another"; nothing is sent (FR-021)',
+      () async {
+    gemma.scriptedDeltas = ['should not run'];
+    final empty = File('${tempDir.path}/empty.jpg')..writeAsBytesSync(<int>[]);
+
+    await controller().send('what is this', image: PendingAttachment(path: empty.path));
+
+    // The send aborts before creating a conversation or calling generate…
+    expect(read().conversationId, isNull);
+    expect(read().isGenerating, isFalse);
+    expect(gemma.lastPrompt, isNull);
+    // …and the composer surfaces "pick another".
+    expect(
+      container.read(attachmentControllerProvider).error,
+      AttachmentController.pickAnotherError,
+    );
+  });
+
   test('stop during an image-grounded reply retains the partial text (FR-014)', () async {
     gemma
       ..scriptedDeltas = ['aa', 'bb', 'cc', 'dd', 'ee']

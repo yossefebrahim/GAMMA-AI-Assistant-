@@ -51,3 +51,17 @@ final modelCapabilitiesProvider = Provider<ModelCapabilities>((ref) {
     orElse: () => ModelCapabilities.textOnly,
   );
 });
+
+/// Whether the model session is actually LOADED (data state), as opposed to loading or failed.
+///
+/// [modelCapabilitiesProvider] reports `textOnly` (image:false) in all three of loading / failed /
+/// genuinely-text-only — the chat screen surfaces loading and failure separately (`_ModelLoading` /
+/// `_ModelError`). This provider lets capability-driven consumers tell a REAL switch to a text-only
+/// model apart from a transient load/reload, so a pending image isn't dropped with the misleading
+/// "this model does not accept images" note while the model is merely loading or failed (002 audit).
+final modelSessionReadyProvider = Provider<bool>((ref) {
+  return ref.watch(modelSessionProvider).maybeWhen(
+        data: (gemma) => gemma.isLoaded,
+        orElse: () => false,
+      );
+});

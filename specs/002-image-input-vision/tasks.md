@@ -214,14 +214,14 @@ conversation stays usable, no hang/crash; an oversized/corrupt pick is rejected 
 
 ### Tests for US6
 
-- [ ] T047 [P] [US6] Unit test `test/unit/features/chat_controller_image_error_test.dart`: `FakeGemmaService` throws `ImageProcessingException` → the assistant turn is finalized cleanly, `isGenerating` resets, and an error message state is surfaced (no hang) (FR-020, SC-008).
-- [ ] T048 [P] [US6] Widget test `test/widget/image_error_message_test.dart`: the unprocessable-image path shows a clear, dismissible message and the composer remains usable; stop during an image-grounded reply retains partial text (FR-014/FR-020).
+- [X] T047 [P] [US6] Unit test `test/unit/features/chat_controller_image_error_test.dart`: `FakeGemmaService` throws `ImageProcessingException` → the assistant turn is finalized cleanly, `isGenerating` resets, and an error message state is surfaced (no hang) (FR-020, SC-008). — Also covers dismiss + stop-during-image-reply retains partial text.
+- [X] T048 [P] [US6] Widget test `test/widget/image_error_message_test.dart`: the unprocessable-image path shows a clear, dismissible message and the composer remains usable; stop during an image-grounded reply retains partial text (FR-014/FR-020). — Banner shows/dismisses + composer stays usable (UI-driven harness; stop-retains-partial covered in the unit test T047).
 
 ### Implementation for US6
 
-- [ ] T049 [US6] Map plugin image failures in `lib/infrastructure/gemma/flutter_gemma_service.dart`: wrap the image-bearing generate in try/catch and throw `ImageProcessingException` on decode/validation/OOM errors (FR-020, R4, depends on T022).
-- [ ] T050 [US6] Reject oversized/corrupt images in `lib/data/images/image_file_store.dart` (size/decoder guard, e.g. > the 10 MB plugin cap) and surface a "pick another" path through the attachment controller (FR-021, depends on T015, T024).
-- [ ] T051 [US6] Handle `ImageProcessingException` in `lib/features/chat/chat_controller.dart`: catch it around `generate`, finalize the assistant turn without a hang, and expose a clear error message; confirm stop during image generation reuses the existing `stop()` path (FR-014/FR-020, depends on T027, T049).
+- [X] T049 [US6] Map plugin image failures in `lib/infrastructure/gemma/flutter_gemma_service.dart`: wrap the image-bearing generate in try/catch and throw `ImageProcessingException` on decode/validation/OOM errors (FR-020, R4, depends on T022). — Implemented with the T022 seam (plugin's `ImageProcessingException` hidden; image-involved failures re-mapped to the domain exception).
+- [X] T050 [US6] Reject oversized/corrupt images in `lib/data/images/image_file_store.dart` (size/decoder guard, e.g. > the 10 MB plugin cap) and surface a "pick another" path through the attachment controller (FR-021, depends on T015, T024). — `ImageFileStore.persist` rejects empty/>10 MB; the attachment controller validates at pick time and surfaces `pickAnotherError` in the composer.
+- [X] T051 [US6] Handle `ImageProcessingException` in `lib/features/chat/chat_controller.dart`: catch it around `generate`, finalize the assistant turn without a hang, and expose a clear error message; confirm stop during image generation reuses the existing `stop()` path (FR-014/FR-020, depends on T027, T049). — Dismissible error banner in the chat surface; stop reuses the existing `stop()` path (verified in T047).
 
 **Checkpoint**: All six stories independently functional; failures degrade honestly.
 
@@ -235,11 +235,11 @@ conversation stays usable, no hang/crash; an oversized/corrupt pick is rejected 
 > but a part needs a **physical baseline device** (Accessibility Scanner, airplane-mode capture,
 > `--release` timing, on-device memory). Those remain for an on-device pass.
 
-- [ ] T052 [P] Accessibility pass for the new controls (attach, camera/library chooser, preview remove/replace, permission explainer actions, in-bubble image): ≥48dp targets + WCAG AA; labels use `textSecondary` (never `textMuted`); image carries a semantic label (FR-026, SC-011, quickstart V9) — _device-pending: Android Accessibility Scanner run._
-- [ ] T053 [P] Offline & privacy validation: confirm `tool/check_network_seam.sh` stays green (no new egress) and run the airplane-mode flow (attach + send + 3 follow-ups) with a network monitor (FR-022/FR-023, SC-009, quickstart V8) — _device-pending: airplane-mode + live capture._
-- [ ] T054 [P] Performance validation in `--release`: image-grounded first reply text within 20 s on the reference baseline device and 100 ms gesture response while streaming (SC-003/SC-010, quickstart V1) — _device-only._
-- [ ] T055 [P] Resource-hygiene check: pending image bytes are not retained after send/clear, history image bytes are read just-in-time and released, and image files are deleted on conversation delete (FR-019, Principle VIII) — _automatable parts via unit tests; device-pending: on-device memory profile._
-- [ ] T056 Execute the full [quickstart.md](quickstart.md) V1–V9 (including the v1→v2 upgrade-over-install check) on a baseline device with an image-capable model and record results — _device-only._
+- [~] T052 [P] Accessibility pass for the new controls (attach, camera/library chooser, preview remove/replace, permission explainer actions, in-bubble image): ≥48dp targets + WCAG AA; labels use `textSecondary` (never `textMuted`); image carries a semantic label (FR-026, SC-011, quickstart V9) — _automatable parts done: all new controls are 48dp `IconButton`s; the in-bubble image + preview carry `Semantics(label: 'attached image')`; labels use `textSecondary`/`textPrimary` (never `textMuted`); the remove control is monochrome. **Device-pending: Android Accessibility Scanner run.**_
+- [~] T053 [P] Offline & privacy validation: confirm `tool/check_network_seam.sh` stays green (no new egress) and run the airplane-mode flow (attach + send + 3 follow-ups) with a network monitor (FR-022/FR-023, SC-009, quickstart V8) — _automatable part done: `./tool/check_network_seam.sh` is green (no new networking; `image_picker`/`permission_handler` add no egress). **Device-pending: airplane-mode + live capture.**_
+- [~] T054 [P] Performance validation in `--release`: image-grounded first reply text within 20 s on the reference baseline device and 100 ms gesture response while streaming (SC-003/SC-010, quickstart V1) — _**device-only** (requires the baseline A34 in `--release`)._
+- [~] T055 [P] Resource-hygiene check: pending image bytes are not retained after send/clear, history image bytes are read just-in-time and released, and image files are deleted on conversation delete (FR-019, Principle VIII) — _automatable parts done: the attachment controller holds only a file path (not bytes); `send` reads bytes into a local `ImageInput` (not stored); `_assembleHistory` reads history bytes into a local map released after `generate`; image files deleted on conversation delete (verified in T044). **Device-pending: on-device memory profile.**_
+- [~] T056 Execute the full [quickstart.md](quickstart.md) V1–V9 (including the v1→v2 upgrade-over-install check) on a baseline device with an image-capable model and record results — _**device-only.** The automated v1→v2 migration is verified off-device (T043); V1–V9 on-device remain for a baseline-device pass._
 
 ---
 

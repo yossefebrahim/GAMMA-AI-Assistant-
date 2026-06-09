@@ -2,6 +2,7 @@ import 'package:ai_assistant/domain/entities/chat_turn.dart';
 import 'package:ai_assistant/domain/entities/image_input.dart';
 import 'package:ai_assistant/domain/entities/model_capabilities.dart';
 import 'package:ai_assistant/domain/services/gemma_service.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 // `flutter_gemma` exports its OWN `ImageProcessingException` from `image_processor.dart`; hide it
 // so the domain `ImageProcessingException` (from gemma_service.dart) is the unprefixed type this
 // seam throws. The plugin's image failures are caught generically and re-mapped (FR-020).
@@ -37,6 +38,12 @@ class FlutterGemmaService implements GemmaService {
   InferenceChat? _chat;
   bool _loaded = false;
   ModelCapabilities _capabilities = ModelCapabilities.textOnly;
+
+  /// The real error from the most recent backend-activation attempt. Surfaced as the `cause` of the
+  /// [ModelLoadException] thrown when EVERY backend fails, so a load failure is diagnosable (e.g. a
+  /// 0.16.x `BackendInitException` / vision-encoder rejection) instead of silently masquerading as a
+  /// text-only model that "does not accept images" (002 audit).
+  Object? _lastActivationError;
 
   Future<void> _ensureInitialized() async {
     if (_initialized) return;
@@ -75,13 +82,21 @@ class FlutterGemmaService implements GemmaService {
 
       // Prefer GPU; fall back to CPU if the backend can't initialize / OOMs on an 8 GB device (R1).
       // The model is created with vision enabled (and one image cap) when the catalog declares it.
+      _lastActivationError = null;
       _model = await _activate(PreferredBackend.gpu, supportImage: capabilities.image) ??
           await _activate(PreferredBackend.cpu, supportImage: capabilities.image);
       if (_model == null) {
-        throw const ModelLoadException('could not initialize a backend for the model');
+        // Carry the swallowed backend error so the failure is diagnosable rather than generic (002
+        // audit): without this, a vision-load rejection surfaces downstream as a misleading
+        // "this model does not accept images" capability flip.
+        throw ModelLoadException(
+          'could not initialize a backend for the model',
+          cause: _lastActivationError,
+        );
       }
       // Vision modality on the chat session follows the catalog capability
       // (enableVisionModality: supportImage), one image per message this slice (FR-005/FR-006, R1).
+      // maxNumImages lives on getActiveModel (createChat has no such param, even in 0.16.x).
       _chat = await _model!.createChat(
         modelType: ModelType.gemma4,
         supportImage: capabilities.image,
@@ -111,7 +126,15 @@ class FlutterGemmaService implements GemmaService {
         supportImage: supportImage,
         maxNumImages: supportImage ? 1 : null,
       );
-    } catch (_) {
+    } catch (error, stackTrace) {
+      // Return null so the GPU→CPU fallback still proceeds, but DON'T discard the cause: keep it for
+      // the ModelLoadException, and log it so an on-device load failure is visible in logcat instead
+      // of a silent capability flip (002 audit). A backend that fails only with vision enabled is the
+      // smoking gun for the "image removed — this model does not accept images" symptom.
+      _lastActivationError = error;
+      debugPrint(
+        'GemmaService: $backend activation failed (supportImage: $supportImage): $error\n$stackTrace',
+      );
       return null;
     }
   }

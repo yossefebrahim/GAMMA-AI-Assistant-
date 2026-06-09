@@ -1,11 +1,14 @@
 import 'package:ai_assistant/domain/entities/model_capabilities.dart';
+import 'package:ai_assistant/domain/services/media_permission_service.dart';
 import 'package:ai_assistant/domain/services/media_picker_service.dart';
 import 'package:ai_assistant/features/chat/attachment_controller.dart';
 import 'package:ai_assistant/features/chat/chat_providers.dart';
 import 'package:ai_assistant/infrastructure/media/image_picker_service.dart';
+import 'package:ai_assistant/infrastructure/media/permission_handler_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/fake_media_permission_service.dart';
 import '../../helpers/fake_media_picker_service.dart';
 
 /// US1 attachment controller (FR-001/FR-002/FR-003) — driven by [FakeMediaPickerService], no device.
@@ -18,6 +21,10 @@ void main() {
     container = ProviderContainer(
       overrides: [
         mediaPickerServiceProvider.overrideWithValue(picker),
+        // Camera access granted so the camera flow proceeds straight to capture.
+        mediaPermissionServiceProvider.overrideWithValue(
+          FakeMediaPermissionService(status: MediaPermissionStatus.granted),
+        ),
         // Keep an image-capable model so the capability listener never clears the pending image.
         modelCapabilitiesProvider.overrideWith((ref) => const ModelCapabilities(image: true)),
       ],
