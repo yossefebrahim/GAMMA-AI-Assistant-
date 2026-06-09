@@ -103,15 +103,34 @@ class ChatController extends Notifier<ChatState> {
 
     final gemma = ref.read(gemmaServiceProvider);
     final buffer = StringBuffer();
+
+    // Persisting EVERY delta re-queried and rebuilt the whole message list per token (a DB write →
+    // drift watch → ListView rebuild, ~dozens of times/s), which is most of the streaming jank.
+    // Throttle: the first delta lands immediately (the bubble swaps its pulse for text right
+    // away), then at most one write per [_flushInterval]; [flush] is ALWAYS called again before
+    // finalize — including the stop and error paths — so no produced token is ever dropped
+    // (FR-014) and the persisted turn always ends complete.
+    var persistedLength = 0;
+    final flushClock = Stopwatch()..start();
+    Future<void> flush() async {
+      if (buffer.length == persistedLength) return;
+      persistedLength = buffer.length;
+      await repo.updateAssistantContent(assistantId, buffer.toString());
+    }
+
     try {
       await for (final delta
           in gemma.generate(history: history, prompt: trimmed, image: imageInput)) {
-        // Retain every delta the model produced before honoring stop (FR-014): write first, then
-        // break. A token delivered concurrently with stop must not be dropped.
         buffer.write(delta);
-        await repo.updateAssistantContent(assistantId, buffer.toString());
+        if (persistedLength == 0 || flushClock.elapsed >= _flushInterval) {
+          flushClock.reset();
+          await flush();
+        }
+        // Retain every delta the model produced before honoring stop (FR-014): the post-loop
+        // flush below persists anything still buffered, so breaking here drops nothing.
         if (_stopRequested) break;
       }
+      await flush();
       await repo.finalizeAssistantMessage(
         assistantId,
         _stopRequested ? MessageStatus.stoppedPartial : MessageStatus.complete,
@@ -119,15 +138,21 @@ class ChatController extends Notifier<ChatState> {
     } on ImageProcessingException {
       // Honest failure (FR-020): finalize the turn cleanly (no hang/crash) and surface a clear,
       // dismissible message. Any partial text already streamed is retained.
+      await flush();
       await repo.finalizeAssistantMessage(assistantId, MessageStatus.stoppedPartial);
       state = state.copyWith(errorMessage: imageErrorMessage);
     } catch (_) {
       // Other mid-stream failures: keep whatever text arrived as a stopped-partial turn.
+      await flush();
       await repo.finalizeAssistantMessage(assistantId, MessageStatus.stoppedPartial);
     } finally {
       state = state.copyWith(isGenerating: false);
     }
   }
+
+  /// Minimum spacing between mid-stream persistence writes (~10 visible updates/s — smooth to
+  /// read, while cutting the per-token DB→watch→rebuild churn that janked the keyboard and list).
+  static const Duration _flushInterval = Duration(milliseconds: 100);
 
   /// Dismiss the current error message (FR-020) — the conversation stays usable.
   void dismissError() => state = state.copyWith(clearError: true);

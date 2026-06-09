@@ -156,11 +156,10 @@ class _ChatBodyState extends ConsumerState<_ChatBody> {
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scroll.hasClients) {
-        _scroll.animateTo(
-          _scroll.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-        );
+        // jumpTo, not animateTo: this fires on every stream emission, and restarting a 200ms
+        // animation per emission keeps a scroll animation permanently in flight — fighting the
+        // keyboard inset animation and re-running physics every frame while a reply streams.
+        _scroll.jumpTo(_scroll.position.maxScrollExtent);
       }
     });
   }

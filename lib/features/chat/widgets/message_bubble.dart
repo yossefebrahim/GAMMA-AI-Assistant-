@@ -25,7 +25,9 @@ class MessageBubble extends StatelessWidget {
     final isStoppedPartial = message.status == MessageStatus.stoppedPartial;
 
     final bubble = Container(
-      constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.82),
+      // sizeOf (NOT MediaQuery.of): subscribing to all MediaQuery aspects rebuilt every visible
+      // bubble on every frame of the keyboard inset animation. Size doesn't change with insets.
+      constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.82),
       padding: const EdgeInsets.symmetric(
         horizontal: AppSpacing.s16,
         vertical: AppSpacing.s12,
@@ -106,6 +108,9 @@ class _BubbleImage extends StatelessWidget {
           child: Image.file(
             File(path),
             fit: BoxFit.contain,
+            // Decode at the displayed height, not the stored resolution: a full 1536px decode is
+            // a ~12 MB texture for a ≤240dp slot, felt as jank on every list/keyboard relayout.
+            cacheHeight: (_maxHeight * MediaQuery.devicePixelRatioOf(context)).round(),
             errorBuilder: (context, error, stack) => Padding(
               padding: const EdgeInsets.all(AppSpacing.s24),
               child: Icon(Icons.broken_image_outlined, color: colors.textSecondary),

@@ -2,7 +2,7 @@ import 'package:ai_assistant/domain/entities/chat_turn.dart';
 import 'package:ai_assistant/domain/entities/image_input.dart';
 import 'package:ai_assistant/domain/entities/model_capabilities.dart';
 import 'package:ai_assistant/domain/services/gemma_service.dart';
-import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/foundation.dart' show DebugPrintCallback, debugPrint;
 // `flutter_gemma` exports its OWN `ImageProcessingException` from `image_processor.dart`; hide it
 // so the domain `ImageProcessingException` (from gemma_service.dart) is the unprefixed type this
 // seam throws. The plugin's image failures are caught generically and re-mapped (FR-020).
@@ -25,6 +25,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// image-bearing history turns are sent via `Message.withImage`/`Message.imageOnly`, and the
 /// plugin's image decode/validate/resize (its `ImageProcessor`, 896², 10 MB) runs natively off the
 /// UI isolate (R1/R4). Image failures are mapped to a domain [ImageProcessingException] (FR-020).
+///
+/// KEPT-WARM SESSION (the R1 "later optimization", now load-bearing for responsiveness): the
+/// plugin executes session create / prompt prefill / image encode ON THE ANDROID MAIN THREAD
+/// (its Pigeon handlers have no TaskQueue), so a full `clearHistory(replayHistory:)` per send —
+/// which recreates the native session and re-encodes EVERY history image — froze input and the
+/// keyboard for seconds. `generate` therefore fingerprints what the native session already holds
+/// and, when the caller's history is exactly the prior context plus the last exchange, appends
+/// only the new prompt instead of replaying. Any stop / error / cancel / reload marks the session
+/// dirty so the next send falls back to the full, correct resync. The seam contract is unchanged:
+/// callers still pass the full history every turn.
 class FlutterGemmaService implements GemmaService {
   static const int _maxTokens = 2048;
 
@@ -44,6 +54,18 @@ class FlutterGemmaService implements GemmaService {
   /// 0.16.x `BackendInitException` / vision-encoder rejection) instead of silently masquerading as a
   /// text-only model that "does not accept images" (002 audit).
   Object? _lastActivationError;
+
+  /// What the native session currently holds, as cheap per-turn fingerprints (role + text + image
+  /// byte length — the bytes themselves are NOT retained between turns, Principle VIII). Null
+  /// whenever the native context may diverge from the caller's history (after load / stop / a
+  /// stream error / cancel / close), which forces the next [generate] to do the full
+  /// `clearHistory(replayHistory:)` resync.
+  List<_TurnFingerprint>? _sessionTurns;
+
+  /// Bumped by [loadModel] / [stop] / [close] so an in-flight [generate] can never commit
+  /// fingerprints for a session that was invalidated underneath it (e.g. `stop()` racing the
+  /// stream's natural end — the native cancel makes the stream finish "normally").
+  int _sessionEpoch = 0;
 
   Future<void> _ensureInitialized() async {
     if (_initialized) return;
@@ -155,21 +177,47 @@ class FlutterGemmaService implements GemmaService {
     }
 
     final involvesImage = image != null || history.any((turn) => turn.image != null);
+
+    // Warm fast path: when the caller's history is exactly what the native session already holds
+    // (the prior context plus the last prompt/reply exchange), skip the session-recreate + full
+    // replay — the plugin runs those on the Android main thread, and replaying re-encodes every
+    // history image, freezing input/keyboard for seconds on a mid-range device. The session is
+    // marked dirty up front and only re-fingerprinted after the stream drains cleanly, so a stop,
+    // error, or cancellation always forces the full resync next send (correct context wins).
+    final fingerprints = [for (final turn in history) _TurnFingerprint.ofTurn(turn)];
+    final warm = _matchesSession(fingerprints);
+    _sessionTurns = null;
+    final epoch = _sessionEpoch;
+
     try {
-      // The caller owns context assembly + sliding window (FR-017/Q2), so rebuild the chat history
-      // from what it passes — including any image-bearing turns (FR-015/FR-016) — then add the new
-      // prompt. (Re-ingesting history each turn is the cost of a stateless seam; a kept-warm
-      // session is a later optimization — R1 risk.)
-      await chat.clearHistory(
-        replayHistory: history.map(_toPluginMessage).toList(),
-      );
+      if (!warm) {
+        // The caller owns context assembly + sliding window (FR-017/Q2), so rebuild the chat
+        // history from what it passes — including any image-bearing turns (FR-015/FR-016) — then
+        // add the new prompt.
+        await chat.clearHistory(
+          replayHistory: history.map(_toPluginMessage).toList(),
+        );
+      }
       await chat.addQueryChunk(_promptMessage(prompt, image));
 
+      final reply = StringBuffer();
       await for (final response in chat.generateChatResponseAsync()) {
         if (response is TextResponse) {
+          reply.write(response.token);
           yield response.token;
         }
         // ThinkingResponse / FunctionCallResponse are ignored this slice (text + image only).
+      }
+
+      // Clean completion: the native session now holds history + this exchange. (Skipped when the
+      // consumer cancelled mid-stream — cancellation stops this generator at the yield — or when
+      // stop()/close()/loadModel() bumped the epoch while the stream was draining.)
+      if (epoch == _sessionEpoch) {
+        _sessionTurns = [
+          ...fingerprints,
+          _TurnFingerprint(isUser: true, text: prompt, imageByteLength: image?.bytes.length),
+          _TurnFingerprint(isUser: false, text: reply.toString(), imageByteLength: null),
+        ];
       }
     } catch (error) {
       // Map image decode/validation/resize/OOM failures to a typed, user-facing failure (FR-020,
@@ -180,6 +228,16 @@ class FlutterGemmaService implements GemmaService {
       }
       rethrow;
     }
+  }
+
+  /// Whether the native session already holds exactly [fingerprints] — the warm fast-path test.
+  bool _matchesSession(List<_TurnFingerprint> fingerprints) {
+    final held = _sessionTurns;
+    if (held == null || held.length != fingerprints.length) return false;
+    for (var i = 0; i < held.length; i++) {
+      if (held[i] != fingerprints[i]) return false;
+    }
+    return true;
   }
 
   /// Map a history [turn] to the plugin's `Message`, carrying its image when present.
@@ -207,11 +265,17 @@ class FlutterGemmaService implements GemmaService {
 
   @override
   Future<void> stop() async {
+    // A stopped generation leaves the native context mid-turn (no end-of-turn) — unknowable from
+    // here, so mark dirty: the next send resyncs with a full replay.
+    _sessionEpoch++;
+    _sessionTurns = null;
     await _chat?.stopGeneration();
   }
 
   @override
   Future<void> close() async {
+    _sessionEpoch++;
+    _sessionTurns = null;
     try {
       await _model?.close();
     } finally {
@@ -222,6 +286,34 @@ class FlutterGemmaService implements GemmaService {
   }
 }
 
+/// Cheap identity of one turn the native session has ingested: role + exact text + image byte
+/// LENGTH (stored image files are write-once, so same path ⇒ same length ⇒ same image — without
+/// retaining or comparing megabytes of bytes, Principle VIII).
+class _TurnFingerprint {
+  const _TurnFingerprint({
+    required this.isUser,
+    required this.text,
+    required this.imageByteLength,
+  });
+
+  _TurnFingerprint.ofTurn(ChatTurn turn)
+      : this(isUser: turn.isUser, text: turn.text, imageByteLength: turn.image?.bytes.length);
+
+  final bool isUser;
+  final String text;
+  final int? imageByteLength;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _TurnFingerprint &&
+      other.isUser == isUser &&
+      other.text == text &&
+      other.imageByteLength == imageByteLength;
+
+  @override
+  int get hashCode => Object.hash(isUser, text, imageByteLength);
+}
+
 /// Kept-alive [GemmaService] (R5) — never auto-disposed, so the ~2.4 GB model doesn't thrash on
 /// rebuilds. The model is loaded/released explicitly by the chat session lifecycle.
 final gemmaServiceProvider = Provider<GemmaService>((ref) {
@@ -229,3 +321,32 @@ final gemmaServiceProvider = Provider<GemmaService>((ref) {
   ref.onDispose(service.close);
   return service;
 });
+
+bool _logFilterInstalled = false;
+
+/// Silence flutter_gemma's hot-path log spam: the plugin `debugPrint`s several lines PER TOKEN
+/// while streaming, and dumps the ENTIRE accumulated history per ingested chunk — in release
+/// builds too (`debugPrint` is not compiled out). At ~10 tokens/s that floods the platform log
+/// channel exactly while frames are being raced. Installed once from `main()`; everything not
+/// matching the plugin's known prefixes passes through untouched (our own `GemmaService:` logs
+/// keep working). Plugin knowledge stays confined to this seam (Principle VII).
+void installGemmaLogFilter() {
+  if (_logFilterInstalled) return;
+  _logFilterInstalled = true;
+  final DebugPrintCallback base = debugPrint;
+  debugPrint = (String? message, {int? wrapWidth}) {
+    if (message != null && _isGemmaLogNoise(message)) return;
+    base(message, wrapWidth: wrapWidth);
+  };
+}
+
+/// Prefixes of flutter_gemma 0.15.3's per-token / per-chunk log lines (see the plugin's
+/// `InferenceChat.generateChatResponseAsync` and `MobileInferenceModelSession.addQueryChunk`).
+bool _isGemmaLogNoise(String message) =>
+    message.startsWith('InferenceChat:') ||
+    message.startsWith('[MobileSession') ||
+    message.startsWith('--- Sending to Native ---') ||
+    message.startsWith('History:') ||
+    message.startsWith('Current Message:') ||
+    message.startsWith('-------------------------') ||
+    message.startsWith('ImageProcessor:');

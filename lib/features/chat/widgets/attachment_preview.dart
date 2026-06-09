@@ -55,6 +55,9 @@ class AttachmentPreview extends StatelessWidget {
                 child: Image.file(
                   File(path),
                   fit: BoxFit.cover,
+                  // Decode at thumbnail size — the picker temp file is up to 1536px, a ~12 MB
+                  // texture for a 56dp thumb that janks the composer/keyboard relayout.
+                  cacheWidth: (_thumbSize * MediaQuery.devicePixelRatioOf(context)).round(),
                   errorBuilder: (context, error, stack) => Icon(
                     Icons.broken_image_outlined,
                     color: colors.textSecondary,
