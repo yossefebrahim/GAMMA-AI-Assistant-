@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:ai_assistant/domain/entities/conversation.dart';
+import 'package:ai_assistant/domain/entities/image_attachment.dart';
 import 'package:ai_assistant/domain/entities/message.dart';
 import 'package:ai_assistant/domain/repositories/conversation_repository.dart';
 
@@ -20,6 +21,10 @@ class FakeConversationRepository implements ConversationRepository {
 
   static const int maxTitleLength = 40;
   static const String fallbackTitle = 'untitled';
+  static const String imageOnlyTitle = 'image';
+
+  /// Stored paths handed to [deleteConversation] — lets tests assert image cleanup (FR-019).
+  final List<String> deletedImagePaths = <String>[];
 
   DateTime _now() => DateTime.now().toUtc();
 
@@ -74,10 +79,19 @@ class FakeConversationRepository implements ConversationRepository {
   }
 
   @override
-  Future<Message> appendUserMessage(int conversationId, String text) async {
+  Future<Message> appendUserMessage(
+    int conversationId,
+    String text, {
+    ImageAttachment? image,
+  }) async {
     final trimmed = text.trim();
-    if (trimmed.isEmpty) {
-      throw ArgumentError.value(text, 'text', 'User message must be non-empty after trim');
+    // Valid with text OR an image (FR-004); only both-empty is rejected.
+    if (trimmed.isEmpty && image == null) {
+      throw ArgumentError.value(
+        text,
+        'text',
+        'User message must have non-empty text or an image',
+      );
     }
     final now = _now();
     final list = _messages[conversationId] ??= <Message>[];
@@ -89,12 +103,14 @@ class FakeConversationRepository implements ConversationRepository {
       sequence: list.length,
       createdAt: now,
       status: MessageStatus.complete,
+      image: image,
     );
     list.add(message);
 
     final conversation = _conversations[conversationId]!;
+    final derivedTitle = trimmed.isNotEmpty ? _deriveTitle(trimmed) : imageOnlyTitle;
     _conversations[conversationId] = conversation.copyWith(
-      title: conversation.title ?? _deriveTitle(trimmed),
+      title: conversation.title ?? derivedTitle,
       updatedAt: now,
     );
     _emitMessages(conversationId);
@@ -160,6 +176,12 @@ class FakeConversationRepository implements ConversationRepository {
 
   @override
   Future<void> deleteConversation(int conversationId) async {
+    // Record image paths so tests can assert file cleanup (FR-019), then drop the conversation.
+    final removed = _messages[conversationId] ?? const <Message>[];
+    for (final message in removed) {
+      final path = message.image?.path;
+      if (path != null) deletedImagePaths.add(path);
+    }
     _conversations.remove(conversationId);
     _messages.remove(conversationId);
     _emitMessages(conversationId);

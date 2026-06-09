@@ -1,4 +1,6 @@
 import 'package:ai_assistant/app/app.dart';
+import 'package:ai_assistant/infrastructure/gemma/flutter_gemma_service.dart'
+    show installGemmaLogFilter;
 import 'package:flutter/foundation.dart' show LicenseEntryWithLineBreaks, LicenseRegistry;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
@@ -14,6 +16,10 @@ const Map<String, String> _fontLicenseAssets = {
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // flutter_gemma logs several lines per streamed token (release builds included) — drop that
+  // noise before it floods the log channel while frames are racing (see the gemma seam).
+  installGemmaLogFilter();
 
   // Offline-first (Principle I/II): never fetch fonts over the network — the app ships them as
   // bundled assets. If a glyph isn't bundled it falls back locally, it does NOT hit Google Fonts.

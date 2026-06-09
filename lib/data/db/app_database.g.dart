@@ -390,6 +390,28 @@ class $MessagesTable extends Messages
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _imagePathMeta = const VerificationMeta(
+    'imagePath',
+  );
+  @override
+  late final GeneratedColumn<String> imagePath = GeneratedColumn<String>(
+    'image_path',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _imageMimeTypeMeta = const VerificationMeta(
+    'imageMimeType',
+  );
+  @override
+  late final GeneratedColumn<String> imageMimeType = GeneratedColumn<String>(
+    'image_mime_type',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -399,6 +421,8 @@ class $MessagesTable extends Messages
     sequence,
     createdAt,
     status,
+    imagePath,
+    imageMimeType,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -466,6 +490,21 @@ class $MessagesTable extends Messages
     } else if (isInserting) {
       context.missing(_statusMeta);
     }
+    if (data.containsKey('image_path')) {
+      context.handle(
+        _imagePathMeta,
+        imagePath.isAcceptableOrUnknown(data['image_path']!, _imagePathMeta),
+      );
+    }
+    if (data.containsKey('image_mime_type')) {
+      context.handle(
+        _imageMimeTypeMeta,
+        imageMimeType.isAcceptableOrUnknown(
+          data['image_mime_type']!,
+          _imageMimeTypeMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -503,6 +542,14 @@ class $MessagesTable extends Messages
         DriftSqlType.string,
         data['${effectivePrefix}status'],
       )!,
+      imagePath: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}image_path'],
+      ),
+      imageMimeType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}image_mime_type'],
+      ),
     );
   }
 
@@ -528,6 +575,15 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
 
   /// `MessageStatus.name` — 'complete' | 'streaming' | 'stoppedPartial'.
   final String status;
+
+  /// Absolute app-private path of the attached image file (002, schema v2). Null for text-only
+  /// turns and all assistant turns. The bytes live as a file under `…/images/`; only the path is
+  /// stored here (R5). Added by the v1→v2 migration as nullable, so existing rows stay valid.
+  final String? imagePath;
+
+  /// Best-effort MIME type of [imagePath] (e.g. `image/jpeg`), for rendering/debugging (002,
+  /// schema v2). Null when there is no image.
+  final String? imageMimeType;
   const MessageRow({
     required this.id,
     required this.conversationId,
@@ -536,6 +592,8 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
     required this.sequence,
     required this.createdAt,
     required this.status,
+    this.imagePath,
+    this.imageMimeType,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -547,6 +605,12 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
     map['sequence'] = Variable<int>(sequence);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['status'] = Variable<String>(status);
+    if (!nullToAbsent || imagePath != null) {
+      map['image_path'] = Variable<String>(imagePath);
+    }
+    if (!nullToAbsent || imageMimeType != null) {
+      map['image_mime_type'] = Variable<String>(imageMimeType);
+    }
     return map;
   }
 
@@ -559,6 +623,12 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
       sequence: Value(sequence),
       createdAt: Value(createdAt),
       status: Value(status),
+      imagePath: imagePath == null && nullToAbsent
+          ? const Value.absent()
+          : Value(imagePath),
+      imageMimeType: imageMimeType == null && nullToAbsent
+          ? const Value.absent()
+          : Value(imageMimeType),
     );
   }
 
@@ -575,6 +645,8 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
       sequence: serializer.fromJson<int>(json['sequence']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       status: serializer.fromJson<String>(json['status']),
+      imagePath: serializer.fromJson<String?>(json['imagePath']),
+      imageMimeType: serializer.fromJson<String?>(json['imageMimeType']),
     );
   }
   @override
@@ -588,6 +660,8 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
       'sequence': serializer.toJson<int>(sequence),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'status': serializer.toJson<String>(status),
+      'imagePath': serializer.toJson<String?>(imagePath),
+      'imageMimeType': serializer.toJson<String?>(imageMimeType),
     };
   }
 
@@ -599,6 +673,8 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
     int? sequence,
     DateTime? createdAt,
     String? status,
+    Value<String?> imagePath = const Value.absent(),
+    Value<String?> imageMimeType = const Value.absent(),
   }) => MessageRow(
     id: id ?? this.id,
     conversationId: conversationId ?? this.conversationId,
@@ -607,6 +683,10 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
     sequence: sequence ?? this.sequence,
     createdAt: createdAt ?? this.createdAt,
     status: status ?? this.status,
+    imagePath: imagePath.present ? imagePath.value : this.imagePath,
+    imageMimeType: imageMimeType.present
+        ? imageMimeType.value
+        : this.imageMimeType,
   );
   MessageRow copyWithCompanion(MessagesCompanion data) {
     return MessageRow(
@@ -619,6 +699,10 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
       sequence: data.sequence.present ? data.sequence.value : this.sequence,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       status: data.status.present ? data.status.value : this.status,
+      imagePath: data.imagePath.present ? data.imagePath.value : this.imagePath,
+      imageMimeType: data.imageMimeType.present
+          ? data.imageMimeType.value
+          : this.imageMimeType,
     );
   }
 
@@ -631,7 +715,9 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
           ..write('content: $content, ')
           ..write('sequence: $sequence, ')
           ..write('createdAt: $createdAt, ')
-          ..write('status: $status')
+          ..write('status: $status, ')
+          ..write('imagePath: $imagePath, ')
+          ..write('imageMimeType: $imageMimeType')
           ..write(')'))
         .toString();
   }
@@ -645,6 +731,8 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
     sequence,
     createdAt,
     status,
+    imagePath,
+    imageMimeType,
   );
   @override
   bool operator ==(Object other) =>
@@ -656,7 +744,9 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
           other.content == this.content &&
           other.sequence == this.sequence &&
           other.createdAt == this.createdAt &&
-          other.status == this.status);
+          other.status == this.status &&
+          other.imagePath == this.imagePath &&
+          other.imageMimeType == this.imageMimeType);
 }
 
 class MessagesCompanion extends UpdateCompanion<MessageRow> {
@@ -667,6 +757,8 @@ class MessagesCompanion extends UpdateCompanion<MessageRow> {
   final Value<int> sequence;
   final Value<DateTime> createdAt;
   final Value<String> status;
+  final Value<String?> imagePath;
+  final Value<String?> imageMimeType;
   const MessagesCompanion({
     this.id = const Value.absent(),
     this.conversationId = const Value.absent(),
@@ -675,6 +767,8 @@ class MessagesCompanion extends UpdateCompanion<MessageRow> {
     this.sequence = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.status = const Value.absent(),
+    this.imagePath = const Value.absent(),
+    this.imageMimeType = const Value.absent(),
   });
   MessagesCompanion.insert({
     this.id = const Value.absent(),
@@ -684,6 +778,8 @@ class MessagesCompanion extends UpdateCompanion<MessageRow> {
     required int sequence,
     required DateTime createdAt,
     required String status,
+    this.imagePath = const Value.absent(),
+    this.imageMimeType = const Value.absent(),
   }) : conversationId = Value(conversationId),
        role = Value(role),
        content = Value(content),
@@ -698,6 +794,8 @@ class MessagesCompanion extends UpdateCompanion<MessageRow> {
     Expression<int>? sequence,
     Expression<DateTime>? createdAt,
     Expression<String>? status,
+    Expression<String>? imagePath,
+    Expression<String>? imageMimeType,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -707,6 +805,8 @@ class MessagesCompanion extends UpdateCompanion<MessageRow> {
       if (sequence != null) 'sequence': sequence,
       if (createdAt != null) 'created_at': createdAt,
       if (status != null) 'status': status,
+      if (imagePath != null) 'image_path': imagePath,
+      if (imageMimeType != null) 'image_mime_type': imageMimeType,
     });
   }
 
@@ -718,6 +818,8 @@ class MessagesCompanion extends UpdateCompanion<MessageRow> {
     Value<int>? sequence,
     Value<DateTime>? createdAt,
     Value<String>? status,
+    Value<String?>? imagePath,
+    Value<String?>? imageMimeType,
   }) {
     return MessagesCompanion(
       id: id ?? this.id,
@@ -727,6 +829,8 @@ class MessagesCompanion extends UpdateCompanion<MessageRow> {
       sequence: sequence ?? this.sequence,
       createdAt: createdAt ?? this.createdAt,
       status: status ?? this.status,
+      imagePath: imagePath ?? this.imagePath,
+      imageMimeType: imageMimeType ?? this.imageMimeType,
     );
   }
 
@@ -754,6 +858,12 @@ class MessagesCompanion extends UpdateCompanion<MessageRow> {
     if (status.present) {
       map['status'] = Variable<String>(status.value);
     }
+    if (imagePath.present) {
+      map['image_path'] = Variable<String>(imagePath.value);
+    }
+    if (imageMimeType.present) {
+      map['image_mime_type'] = Variable<String>(imageMimeType.value);
+    }
     return map;
   }
 
@@ -766,7 +876,9 @@ class MessagesCompanion extends UpdateCompanion<MessageRow> {
           ..write('content: $content, ')
           ..write('sequence: $sequence, ')
           ..write('createdAt: $createdAt, ')
-          ..write('status: $status')
+          ..write('status: $status, ')
+          ..write('imagePath: $imagePath, ')
+          ..write('imageMimeType: $imageMimeType')
           ..write(')'))
         .toString();
   }
@@ -1748,6 +1860,8 @@ typedef $$MessagesTableCreateCompanionBuilder =
       required int sequence,
       required DateTime createdAt,
       required String status,
+      Value<String?> imagePath,
+      Value<String?> imageMimeType,
     });
 typedef $$MessagesTableUpdateCompanionBuilder =
     MessagesCompanion Function({
@@ -1758,6 +1872,8 @@ typedef $$MessagesTableUpdateCompanionBuilder =
       Value<int> sequence,
       Value<DateTime> createdAt,
       Value<String> status,
+      Value<String?> imagePath,
+      Value<String?> imageMimeType,
     });
 
 final class $$MessagesTableReferences
@@ -1820,6 +1936,16 @@ class $$MessagesTableFilterComposer
 
   ColumnFilters<String> get status => $composableBuilder(
     column: $table.status,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get imagePath => $composableBuilder(
+    column: $table.imagePath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get imageMimeType => $composableBuilder(
+    column: $table.imageMimeType,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -1886,6 +2012,16 @@ class $$MessagesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get imagePath => $composableBuilder(
+    column: $table.imagePath,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get imageMimeType => $composableBuilder(
+    column: $table.imageMimeType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$ConversationsTableOrderingComposer get conversationId {
     final $$ConversationsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -1936,6 +2072,14 @@ class $$MessagesTableAnnotationComposer
 
   GeneratedColumn<String> get status =>
       $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<String> get imagePath =>
+      $composableBuilder(column: $table.imagePath, builder: (column) => column);
+
+  GeneratedColumn<String> get imageMimeType => $composableBuilder(
+    column: $table.imageMimeType,
+    builder: (column) => column,
+  );
 
   $$ConversationsTableAnnotationComposer get conversationId {
     final $$ConversationsTableAnnotationComposer composer = $composerBuilder(
@@ -1996,6 +2140,8 @@ class $$MessagesTableTableManager
                 Value<int> sequence = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<String> status = const Value.absent(),
+                Value<String?> imagePath = const Value.absent(),
+                Value<String?> imageMimeType = const Value.absent(),
               }) => MessagesCompanion(
                 id: id,
                 conversationId: conversationId,
@@ -2004,6 +2150,8 @@ class $$MessagesTableTableManager
                 sequence: sequence,
                 createdAt: createdAt,
                 status: status,
+                imagePath: imagePath,
+                imageMimeType: imageMimeType,
               ),
           createCompanionCallback:
               ({
@@ -2014,6 +2162,8 @@ class $$MessagesTableTableManager
                 required int sequence,
                 required DateTime createdAt,
                 required String status,
+                Value<String?> imagePath = const Value.absent(),
+                Value<String?> imageMimeType = const Value.absent(),
               }) => MessagesCompanion.insert(
                 id: id,
                 conversationId: conversationId,
@@ -2022,6 +2172,8 @@ class $$MessagesTableTableManager
                 sequence: sequence,
                 createdAt: createdAt,
                 status: status,
+                imagePath: imagePath,
+                imageMimeType: imageMimeType,
               ),
           withReferenceMapper: (p0) => p0
               .map(

@@ -1,4 +1,5 @@
 import 'package:ai_assistant/domain/entities/chat_turn.dart';
+import 'package:ai_assistant/domain/entities/image_input.dart';
 import 'package:ai_assistant/domain/entities/message.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -22,15 +23,28 @@ class ContextAssembler {
 
   /// Assemble the context from [priorMessages] — the conversation's turns BEFORE the current
   /// prompt, in order. Returns ordered turns trimmed (oldest-first) to fit [maxContextTokens].
-  List<ChatTurn> assemble(List<Message> priorMessages) {
+  ///
+  /// An image-bearing prior turn carries its image forward so a follow-up keeps referring to it
+  /// (FR-015/FR-016): [images] maps a message id to the bytes the caller has read just-in-time
+  /// (T037), and the matching `ChatTurn` is built with that [ImageInput]. The assembler stays pure
+  /// (no file I/O) — the bytes are injected. An image-only user turn (empty text) is still included.
+  List<ChatTurn> assemble(
+    List<Message> priorMessages, {
+    Map<int, ImageInput> images = const <int, ImageInput>{},
+  }) {
     final turns = <ChatTurn>[];
     for (final message in priorMessages) {
       // Skip an empty assistant placeholder (still streaming, no text yet). Stopped-partial and
-      // complete turns carry real text and are included.
+      // complete turns carry real text and are included; a user turn is kept even if its text is
+      // empty (it may be image-only).
       if (message.role == MessageRole.assistant && message.content.isEmpty) {
         continue;
       }
-      turns.add(ChatTurn(isUser: message.isUser, text: message.content));
+      turns.add(ChatTurn(
+        isUser: message.isUser,
+        text: message.content,
+        image: images[message.id],
+      ));
     }
 
     var totalTokens = turns.fold<int>(0, (sum, turn) => sum + _estimateTokens(turn.text));

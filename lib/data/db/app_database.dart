@@ -18,7 +18,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _open());
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   // Store DateTimes as ISO-8601 TEXT (UTC) instead of integer Unix *seconds* (drift's default).
   // This preserves sub-second precision so the history list orders correctly when conversations
@@ -30,6 +30,15 @@ class AppDatabase extends _$AppDatabase {
   @override
   MigrationStrategy get migration => MigrationStrategy(
         onCreate: (m) => m.createAll(),
+        onUpgrade: (m, from, to) async {
+          // v1 → v2 (002): add the nullable image columns to `messages`. 001 has shipped, so
+          // upgraders' existing rows must survive; the columns are nullable → old text
+          // conversations stay valid with NULL (FR-017, R5). Fresh installs get v2 via onCreate.
+          if (from < 2) {
+            await m.addColumn(messages, messages.imagePath);
+            await m.addColumn(messages, messages.imageMimeType);
+          }
+        },
         beforeOpen: (details) async {
           // Required so the messages→conversations cascade actually fires (FR-022).
           await customStatement('PRAGMA foreign_keys = ON');

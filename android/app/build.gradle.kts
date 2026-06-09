@@ -38,6 +38,14 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+            // flutter_gemma 0.15.3 bundles MediaPipe/LiteRT-LM, which references optional classes
+            // (com.google.mediapipe.proto.*, auto.value.Memoized) that R8 can't resolve, and this
+            // app ships no keep rules — so the default release R8 pass fails (missing classes) and
+            // would also risk stripping JNI-referenced native classes. Disable shrinking for now so
+            // `flutter run --release` builds; revisit with proper proguard keep rules before a real
+            // store release (002 on-device verification).
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
     }
 }

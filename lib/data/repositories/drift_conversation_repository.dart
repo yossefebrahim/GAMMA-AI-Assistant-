@@ -1,24 +1,31 @@
 import 'package:ai_assistant/data/db/app_database.dart';
+import 'package:ai_assistant/data/images/image_file_store.dart';
 import 'package:ai_assistant/domain/entities/conversation.dart';
+import 'package:ai_assistant/domain/entities/image_attachment.dart';
 import 'package:ai_assistant/domain/entities/message.dart';
 import 'package:ai_assistant/domain/repositories/conversation_repository.dart';
 import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// drift-backed [ConversationRepository] (R3). All time is stored in UTC; ordering ties break on
-/// id so the reactive history list is deterministic.
+/// id so the reactive history list is deterministic. Image bytes live as app-private files via
+/// [ImageFileStore]; only the path is persisted in the `messages` table (R5).
 class DriftConversationRepository implements ConversationRepository {
-  DriftConversationRepository(this._db);
+  DriftConversationRepository(this._db, this._imageStore);
 
   final AppDatabase _db;
+  final ImageFileStore _imageStore;
   ConversationDao get _dao => _db.conversationDao;
 
   /// Max derived title length (FR-021).
   static const int maxTitleLength = 40;
 
   /// Fallback when a first message is empty after trimming (FR-021). User messages are rejected
-  /// when empty, so this is a defensive default rather than a common path.
+  /// when empty (and image-less), so this is a defensive default rather than a common path.
   static const String fallbackTitle = 'untitled';
+
+  /// Title for an image-only first message (no text to derive from) — FR-021 fallback.
+  static const String imageOnlyTitle = 'image';
 
   static DateTime _now() => DateTime.now().toUtc();
 
@@ -37,6 +44,9 @@ class DriftConversationRepository implements ConversationRepository {
         sequence: r.sequence,
         createdAt: r.createdAt,
         status: MessageStatus.values.byName(r.status),
+        image: r.imagePath == null
+            ? null
+            : ImageAttachment(path: r.imagePath!, mimeType: r.imageMimeType),
       );
 
   String _deriveTitle(String firstMessage) {
@@ -64,10 +74,19 @@ class DriftConversationRepository implements ConversationRepository {
   }
 
   @override
-  Future<Message> appendUserMessage(int conversationId, String text) async {
+  Future<Message> appendUserMessage(
+    int conversationId,
+    String text, {
+    ImageAttachment? image,
+  }) async {
     final trimmed = text.trim();
-    if (trimmed.isEmpty) {
-      throw ArgumentError.value(text, 'text', 'User message must be non-empty after trim');
+    // A user turn is valid with text OR an image (FR-004); only both-empty is rejected.
+    if (trimmed.isEmpty && image == null) {
+      throw ArgumentError.value(
+        text,
+        'text',
+        'User message must have non-empty text or an image',
+      );
     }
     final now = _now();
     final sequence = await _dao.nextSequence(conversationId);
@@ -79,12 +98,17 @@ class DriftConversationRepository implements ConversationRepository {
         sequence: sequence,
         createdAt: now,
         status: MessageStatus.complete.name,
+        imagePath: Value(image?.path),
+        imageMimeType: Value(image?.mimeType),
       ),
     );
 
-    // Set the title from the first user message if not already set (FR-021).
+    // Set the title from the first user message if not already set (FR-021): from the text, or a
+    // fallback label for an image-only first message.
     final conversation = await _dao.conversationById(conversationId);
-    final newTitle = conversation.title == null ? _deriveTitle(trimmed) : null;
+    final newTitle = conversation.title != null
+        ? null
+        : (trimmed.isNotEmpty ? _deriveTitle(trimmed) : imageOnlyTitle);
     await _dao.touchConversation(conversationId, now, title: newTitle);
 
     return _toMessage(await _dao.messageById(messageId));
@@ -129,11 +153,24 @@ class DriftConversationRepository implements ConversationRepository {
 
   @override
   Future<void> deleteConversation(int conversationId) async {
+    // Delete the conversation's image files BEFORE the row delete (FR-019) — once the rows cascade
+    // away their paths are gone. Reads paths first, then removes files, then drops the row.
+    final rows = await _dao.messagesFor(conversationId);
+    final imagePaths = rows
+        .map((r) => r.imagePath)
+        .whereType<String>()
+        .toList(growable: false);
+    if (imagePaths.isNotEmpty) {
+      await _imageStore.deleteAll(imagePaths);
+    }
     await _dao.deleteConversationById(conversationId);
   }
 }
 
-/// App-wide [ConversationRepository] backed by the drift database.
+/// App-wide [ConversationRepository] backed by the drift database + the app-private image store.
 final conversationRepositoryProvider = Provider<ConversationRepository>((ref) {
-  return DriftConversationRepository(ref.watch(appDatabaseProvider));
+  return DriftConversationRepository(
+    ref.watch(appDatabaseProvider),
+    ref.watch(imageFileStoreProvider),
+  );
 });

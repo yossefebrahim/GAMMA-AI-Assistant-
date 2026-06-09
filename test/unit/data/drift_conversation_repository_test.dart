@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:ai_assistant/data/db/app_database.dart';
+import 'package:ai_assistant/data/images/image_file_store.dart';
 import 'package:ai_assistant/data/repositories/drift_conversation_repository.dart';
 import 'package:ai_assistant/domain/entities/message.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -10,15 +13,21 @@ import '../../helpers/test_db.dart';
 /// the stopped-partial retention behind SC-005/FR-014.
 void main() {
   late AppDatabase db;
+  late Directory tempDir;
   late DriftConversationRepository repo;
 
   setUp(() {
     db = newTestDatabase();
-    repo = DriftConversationRepository(db);
+    tempDir = Directory.systemTemp.createTempSync('repo_test_');
+    repo = DriftConversationRepository(
+      db,
+      ImageFileStore(documentsDirectory: () async => tempDir),
+    );
   });
 
   tearDown(() async {
     await db.close();
+    if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
   });
 
   test('createConversation starts untitled and empty', () async {

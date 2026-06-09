@@ -27,6 +27,10 @@ dependencies:
 
   # Model runtime (LiteRT-LM / MediaPipe) — isolated behind GemmaService (R1).
   # ^0.15.0 for native Gemma 4 (ModelType.gemma4 + .litertlm), which arrived in 0.14.1+.
+  # NOTE: a 0.16.x experiment (audit 2026-06-08) regressed image input on the A34 — its new native
+  # LiteRT-LM (v0.12.0-a) failed to load the vision-enabled model, flipping capabilities to text-only
+  # and surfacing "image removed — this model does not accept images". Reverted to ^0.15.0 (verified
+  # 0.15.3). See specs/002-image-input-vision/diagnosis-and-audit-2026-06-08.md.
   flutter_gemma: ^0.15.0
 
   # One-time model download under an Android foreground service (R2).
@@ -42,6 +46,17 @@ dependencies:
   # Device preflight: physicalRamSize + supportedAbis (R4).
   device_info_plus: ^13.1.0
 
+  # Image acquisition — camera capture + Android Photo Picker for the library, behind the
+  # MediaPickerService seam (002 R2). Imported ONLY in lib/infrastructure/media/ (Principle VII
+  # discipline, enforced by tool/check_plugin_seam.sh). Pick-time downscale keeps stored copies
+  # modest and under flutter_gemma's 10 MB image cap.
+  image_picker: ^1.2.0
+
+  # Camera permission status/request + openAppSettings() for the permanently-denied path, behind
+  # the MediaPermissionService seam (002 R3). The photo library is permissionless on modern Android
+  # (the Photo Picker grants per-image access). Imported ONLY in lib/infrastructure/media/.
+  permission_handler: ^12.0.0
+
   # App-private documents directory (R2/R3).
   path_provider: ^2.1.5
 
@@ -55,6 +70,10 @@ dev_dependencies:
   # drift codegen (run: dart run build_runner build).
   drift_dev: ^2.33.0
   build_runner: ^2.15.0
+
+  # Direct raw-SQL access for the v1→v2 migration test (seed a v1 schema by hand). Already resolved
+  # transitively via drift; pinned here only so the test may import it without a lint.
+  sqlite3: ^3.3.0
 
   flutter_lints: ^6.0.0
 
