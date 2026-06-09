@@ -44,7 +44,7 @@ dependencies:
   flutter_riverpod: 3.3.1
 
   # Device preflight: physicalRamSize + supportedAbis (R4).
-  device_info_plus: ^12.4.0
+  device_info_plus: ^13.1.0
 
   # Image acquisition — camera capture + Android Photo Picker for the library, behind the
   # MediaPickerService seam (002 R2). Imported ONLY in lib/infrastructure/media/ (Principle VII
@@ -61,7 +61,7 @@ dependencies:
   path_provider: ^2.1.5
 
   # Offline-bundled fonts; runtime fetching disabled in main.dart (R6).
-  google_fonts: ^6.3.3
+  google_fonts: ^8.1.0
 
 dev_dependencies:
   flutter_test:
