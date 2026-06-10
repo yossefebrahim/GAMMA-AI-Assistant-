@@ -53,7 +53,8 @@ void main() {
     raw.execute('PRAGMA user_version = 1;');
     raw.close();
 
-    // --- Open at v2 → drift runs onUpgrade(1, 2). ---
+    // --- Open at the current schema → drift runs onUpgrade(1, …), through the v2 block (and on
+    // through v3's audio block, 003). ---
     final db = AppDatabase(NativeDatabase(dbFile));
     addTearDown(db.close);
 
@@ -63,15 +64,17 @@ void main() {
     expect(messages.single.content, 'hello from v1');
     expect(messages.single.imagePath, isNull);
     expect(messages.single.imageMimeType, isNull);
+    expect(messages.single.audioPath, isNull, reason: 'v3 audio columns land too (003)');
+    expect(messages.single.audioMimeType, isNull);
 
     // The conversation survived the upgrade.
     final conversations = await db.select(db.conversations).get();
     expect(conversations.single.title, 'old chat');
 
-    expect(db.schemaVersion, 2);
+    expect(db.schemaVersion, 3);
   });
 
-  test('fresh installs are created at v2 with the image columns (onCreate)', () async {
+  test('fresh installs are created with the image columns (onCreate)', () async {
     final db = AppDatabase(NativeDatabase.memory());
     addTearDown(db.close);
 

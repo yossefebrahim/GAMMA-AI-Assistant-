@@ -47,6 +47,16 @@ class Messages extends Table {
   /// Best-effort MIME type of [imagePath] (e.g. `image/jpeg`), for rendering/debugging (002,
   /// schema v2). Null when there is no image.
   TextColumn get imageMimeType => text().nullable()();
+
+  /// Absolute app-private path of the attached voice clip (003, schema v3). Null for text-only
+  /// turns and all assistant turns; exclusive with [imagePath] (audio XOR image, spec Q3 —
+  /// enforced upstream). The bytes live as a file under `…/audio/`; only the path is stored here
+  /// (R6). Added by the v2→v3 migration as nullable, so existing rows stay valid.
+  TextColumn get audioPath => text().nullable()();
+
+  /// Best-effort MIME type of [audioPath] (`audio/wav`), for rendering/debugging (003, schema
+  /// v3). Null when there is no audio.
+  TextColumn get audioMimeType => text().nullable()();
 }
 
 @DataClassName('ModelInstallRow')

@@ -412,6 +412,28 @@ class $MessagesTable extends Messages
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _audioPathMeta = const VerificationMeta(
+    'audioPath',
+  );
+  @override
+  late final GeneratedColumn<String> audioPath = GeneratedColumn<String>(
+    'audio_path',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _audioMimeTypeMeta = const VerificationMeta(
+    'audioMimeType',
+  );
+  @override
+  late final GeneratedColumn<String> audioMimeType = GeneratedColumn<String>(
+    'audio_mime_type',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -423,6 +445,8 @@ class $MessagesTable extends Messages
     status,
     imagePath,
     imageMimeType,
+    audioPath,
+    audioMimeType,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -505,6 +529,21 @@ class $MessagesTable extends Messages
         ),
       );
     }
+    if (data.containsKey('audio_path')) {
+      context.handle(
+        _audioPathMeta,
+        audioPath.isAcceptableOrUnknown(data['audio_path']!, _audioPathMeta),
+      );
+    }
+    if (data.containsKey('audio_mime_type')) {
+      context.handle(
+        _audioMimeTypeMeta,
+        audioMimeType.isAcceptableOrUnknown(
+          data['audio_mime_type']!,
+          _audioMimeTypeMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -550,6 +589,14 @@ class $MessagesTable extends Messages
         DriftSqlType.string,
         data['${effectivePrefix}image_mime_type'],
       ),
+      audioPath: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}audio_path'],
+      ),
+      audioMimeType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}audio_mime_type'],
+      ),
     );
   }
 
@@ -584,6 +631,16 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
   /// Best-effort MIME type of [imagePath] (e.g. `image/jpeg`), for rendering/debugging (002,
   /// schema v2). Null when there is no image.
   final String? imageMimeType;
+
+  /// Absolute app-private path of the attached voice clip (003, schema v3). Null for text-only
+  /// turns and all assistant turns; exclusive with [imagePath] (audio XOR image, spec Q3 —
+  /// enforced upstream). The bytes live as a file under `…/audio/`; only the path is stored here
+  /// (R6). Added by the v2→v3 migration as nullable, so existing rows stay valid.
+  final String? audioPath;
+
+  /// Best-effort MIME type of [audioPath] (`audio/wav`), for rendering/debugging (003, schema
+  /// v3). Null when there is no audio.
+  final String? audioMimeType;
   const MessageRow({
     required this.id,
     required this.conversationId,
@@ -594,6 +651,8 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
     required this.status,
     this.imagePath,
     this.imageMimeType,
+    this.audioPath,
+    this.audioMimeType,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -610,6 +669,12 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
     }
     if (!nullToAbsent || imageMimeType != null) {
       map['image_mime_type'] = Variable<String>(imageMimeType);
+    }
+    if (!nullToAbsent || audioPath != null) {
+      map['audio_path'] = Variable<String>(audioPath);
+    }
+    if (!nullToAbsent || audioMimeType != null) {
+      map['audio_mime_type'] = Variable<String>(audioMimeType);
     }
     return map;
   }
@@ -629,6 +694,12 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
       imageMimeType: imageMimeType == null && nullToAbsent
           ? const Value.absent()
           : Value(imageMimeType),
+      audioPath: audioPath == null && nullToAbsent
+          ? const Value.absent()
+          : Value(audioPath),
+      audioMimeType: audioMimeType == null && nullToAbsent
+          ? const Value.absent()
+          : Value(audioMimeType),
     );
   }
 
@@ -647,6 +718,8 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
       status: serializer.fromJson<String>(json['status']),
       imagePath: serializer.fromJson<String?>(json['imagePath']),
       imageMimeType: serializer.fromJson<String?>(json['imageMimeType']),
+      audioPath: serializer.fromJson<String?>(json['audioPath']),
+      audioMimeType: serializer.fromJson<String?>(json['audioMimeType']),
     );
   }
   @override
@@ -662,6 +735,8 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
       'status': serializer.toJson<String>(status),
       'imagePath': serializer.toJson<String?>(imagePath),
       'imageMimeType': serializer.toJson<String?>(imageMimeType),
+      'audioPath': serializer.toJson<String?>(audioPath),
+      'audioMimeType': serializer.toJson<String?>(audioMimeType),
     };
   }
 
@@ -675,6 +750,8 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
     String? status,
     Value<String?> imagePath = const Value.absent(),
     Value<String?> imageMimeType = const Value.absent(),
+    Value<String?> audioPath = const Value.absent(),
+    Value<String?> audioMimeType = const Value.absent(),
   }) => MessageRow(
     id: id ?? this.id,
     conversationId: conversationId ?? this.conversationId,
@@ -687,6 +764,10 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
     imageMimeType: imageMimeType.present
         ? imageMimeType.value
         : this.imageMimeType,
+    audioPath: audioPath.present ? audioPath.value : this.audioPath,
+    audioMimeType: audioMimeType.present
+        ? audioMimeType.value
+        : this.audioMimeType,
   );
   MessageRow copyWithCompanion(MessagesCompanion data) {
     return MessageRow(
@@ -703,6 +784,10 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
       imageMimeType: data.imageMimeType.present
           ? data.imageMimeType.value
           : this.imageMimeType,
+      audioPath: data.audioPath.present ? data.audioPath.value : this.audioPath,
+      audioMimeType: data.audioMimeType.present
+          ? data.audioMimeType.value
+          : this.audioMimeType,
     );
   }
 
@@ -717,7 +802,9 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
           ..write('createdAt: $createdAt, ')
           ..write('status: $status, ')
           ..write('imagePath: $imagePath, ')
-          ..write('imageMimeType: $imageMimeType')
+          ..write('imageMimeType: $imageMimeType, ')
+          ..write('audioPath: $audioPath, ')
+          ..write('audioMimeType: $audioMimeType')
           ..write(')'))
         .toString();
   }
@@ -733,6 +820,8 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
     status,
     imagePath,
     imageMimeType,
+    audioPath,
+    audioMimeType,
   );
   @override
   bool operator ==(Object other) =>
@@ -746,7 +835,9 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
           other.createdAt == this.createdAt &&
           other.status == this.status &&
           other.imagePath == this.imagePath &&
-          other.imageMimeType == this.imageMimeType);
+          other.imageMimeType == this.imageMimeType &&
+          other.audioPath == this.audioPath &&
+          other.audioMimeType == this.audioMimeType);
 }
 
 class MessagesCompanion extends UpdateCompanion<MessageRow> {
@@ -759,6 +850,8 @@ class MessagesCompanion extends UpdateCompanion<MessageRow> {
   final Value<String> status;
   final Value<String?> imagePath;
   final Value<String?> imageMimeType;
+  final Value<String?> audioPath;
+  final Value<String?> audioMimeType;
   const MessagesCompanion({
     this.id = const Value.absent(),
     this.conversationId = const Value.absent(),
@@ -769,6 +862,8 @@ class MessagesCompanion extends UpdateCompanion<MessageRow> {
     this.status = const Value.absent(),
     this.imagePath = const Value.absent(),
     this.imageMimeType = const Value.absent(),
+    this.audioPath = const Value.absent(),
+    this.audioMimeType = const Value.absent(),
   });
   MessagesCompanion.insert({
     this.id = const Value.absent(),
@@ -780,6 +875,8 @@ class MessagesCompanion extends UpdateCompanion<MessageRow> {
     required String status,
     this.imagePath = const Value.absent(),
     this.imageMimeType = const Value.absent(),
+    this.audioPath = const Value.absent(),
+    this.audioMimeType = const Value.absent(),
   }) : conversationId = Value(conversationId),
        role = Value(role),
        content = Value(content),
@@ -796,6 +893,8 @@ class MessagesCompanion extends UpdateCompanion<MessageRow> {
     Expression<String>? status,
     Expression<String>? imagePath,
     Expression<String>? imageMimeType,
+    Expression<String>? audioPath,
+    Expression<String>? audioMimeType,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -807,6 +906,8 @@ class MessagesCompanion extends UpdateCompanion<MessageRow> {
       if (status != null) 'status': status,
       if (imagePath != null) 'image_path': imagePath,
       if (imageMimeType != null) 'image_mime_type': imageMimeType,
+      if (audioPath != null) 'audio_path': audioPath,
+      if (audioMimeType != null) 'audio_mime_type': audioMimeType,
     });
   }
 
@@ -820,6 +921,8 @@ class MessagesCompanion extends UpdateCompanion<MessageRow> {
     Value<String>? status,
     Value<String?>? imagePath,
     Value<String?>? imageMimeType,
+    Value<String?>? audioPath,
+    Value<String?>? audioMimeType,
   }) {
     return MessagesCompanion(
       id: id ?? this.id,
@@ -831,6 +934,8 @@ class MessagesCompanion extends UpdateCompanion<MessageRow> {
       status: status ?? this.status,
       imagePath: imagePath ?? this.imagePath,
       imageMimeType: imageMimeType ?? this.imageMimeType,
+      audioPath: audioPath ?? this.audioPath,
+      audioMimeType: audioMimeType ?? this.audioMimeType,
     );
   }
 
@@ -864,6 +969,12 @@ class MessagesCompanion extends UpdateCompanion<MessageRow> {
     if (imageMimeType.present) {
       map['image_mime_type'] = Variable<String>(imageMimeType.value);
     }
+    if (audioPath.present) {
+      map['audio_path'] = Variable<String>(audioPath.value);
+    }
+    if (audioMimeType.present) {
+      map['audio_mime_type'] = Variable<String>(audioMimeType.value);
+    }
     return map;
   }
 
@@ -878,7 +989,9 @@ class MessagesCompanion extends UpdateCompanion<MessageRow> {
           ..write('createdAt: $createdAt, ')
           ..write('status: $status, ')
           ..write('imagePath: $imagePath, ')
-          ..write('imageMimeType: $imageMimeType')
+          ..write('imageMimeType: $imageMimeType, ')
+          ..write('audioPath: $audioPath, ')
+          ..write('audioMimeType: $audioMimeType')
           ..write(')'))
         .toString();
   }
@@ -1862,6 +1975,8 @@ typedef $$MessagesTableCreateCompanionBuilder =
       required String status,
       Value<String?> imagePath,
       Value<String?> imageMimeType,
+      Value<String?> audioPath,
+      Value<String?> audioMimeType,
     });
 typedef $$MessagesTableUpdateCompanionBuilder =
     MessagesCompanion Function({
@@ -1874,6 +1989,8 @@ typedef $$MessagesTableUpdateCompanionBuilder =
       Value<String> status,
       Value<String?> imagePath,
       Value<String?> imageMimeType,
+      Value<String?> audioPath,
+      Value<String?> audioMimeType,
     });
 
 final class $$MessagesTableReferences
@@ -1946,6 +2063,16 @@ class $$MessagesTableFilterComposer
 
   ColumnFilters<String> get imageMimeType => $composableBuilder(
     column: $table.imageMimeType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get audioPath => $composableBuilder(
+    column: $table.audioPath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get audioMimeType => $composableBuilder(
+    column: $table.audioMimeType,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -2022,6 +2149,16 @@ class $$MessagesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get audioPath => $composableBuilder(
+    column: $table.audioPath,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get audioMimeType => $composableBuilder(
+    column: $table.audioMimeType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$ConversationsTableOrderingComposer get conversationId {
     final $$ConversationsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -2078,6 +2215,14 @@ class $$MessagesTableAnnotationComposer
 
   GeneratedColumn<String> get imageMimeType => $composableBuilder(
     column: $table.imageMimeType,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get audioPath =>
+      $composableBuilder(column: $table.audioPath, builder: (column) => column);
+
+  GeneratedColumn<String> get audioMimeType => $composableBuilder(
+    column: $table.audioMimeType,
     builder: (column) => column,
   );
 
@@ -2142,6 +2287,8 @@ class $$MessagesTableTableManager
                 Value<String> status = const Value.absent(),
                 Value<String?> imagePath = const Value.absent(),
                 Value<String?> imageMimeType = const Value.absent(),
+                Value<String?> audioPath = const Value.absent(),
+                Value<String?> audioMimeType = const Value.absent(),
               }) => MessagesCompanion(
                 id: id,
                 conversationId: conversationId,
@@ -2152,6 +2299,8 @@ class $$MessagesTableTableManager
                 status: status,
                 imagePath: imagePath,
                 imageMimeType: imageMimeType,
+                audioPath: audioPath,
+                audioMimeType: audioMimeType,
               ),
           createCompanionCallback:
               ({
@@ -2164,6 +2313,8 @@ class $$MessagesTableTableManager
                 required String status,
                 Value<String?> imagePath = const Value.absent(),
                 Value<String?> imageMimeType = const Value.absent(),
+                Value<String?> audioPath = const Value.absent(),
+                Value<String?> audioMimeType = const Value.absent(),
               }) => MessagesCompanion.insert(
                 id: id,
                 conversationId: conversationId,
@@ -2174,6 +2325,8 @@ class $$MessagesTableTableManager
                 status: status,
                 imagePath: imagePath,
                 imageMimeType: imageMimeType,
+                audioPath: audioPath,
+                audioMimeType: audioMimeType,
               ),
           withReferenceMapper: (p0) => p0
               .map(

@@ -14,6 +14,11 @@ analyzer:
     - "**/*.g.dart"
     - "**/*.drift.dart"
     - "**/*.freezed.dart"
+    # The sanctioned `flutter drive` vehicle for device-stateful runs (NEVER `flutter test
+    # integration_test/...`, which uninstalls the app and wipes the model + DB — 003 spike
+    # incident log). Its `integration_test` import only resolves when a drive target temporarily
+    # re-adds that dev-dependency; keep the file, skip the analyzer.
+    - "test_driver/**"
   language:
     strict-casts: true
     strict-inference: true

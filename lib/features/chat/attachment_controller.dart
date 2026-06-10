@@ -1,6 +1,7 @@
 import 'package:ai_assistant/domain/services/media_permission_service.dart';
 import 'package:ai_assistant/domain/services/media_picker_service.dart';
 import 'package:ai_assistant/features/chat/chat_providers.dart';
+import 'package:ai_assistant/features/chat/recording_controller.dart';
 import 'package:ai_assistant/infrastructure/media/image_picker_service.dart';
 import 'package:ai_assistant/infrastructure/media/permission_handler_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -77,6 +78,9 @@ class AttachmentController extends Notifier<AttachmentState> {
   /// Surfaced when a picked image is too large / unusable, so the user can pick another (FR-021).
   static const String pickAnotherError = "that image can't be used — pick another";
 
+  /// One attachment per message (003 spec Q3): attaching an image replaces a pending voice clip.
+  static const String clipReplacedNote = 'one attachment per message — voice clip removed';
+
   @override
   AttachmentState build() {
     // Capability-driven clearing (FR-008): if the active model flips to image-unsupported while an
@@ -88,8 +92,15 @@ class AttachmentController extends Notifier<AttachmentState> {
     // (002 audit: a 0.16.x model-load failure surfaced as "image removed — this model does not
     // accept images"). The note now fires only on a real switch to a loaded text-only model.
     ref.listen(modelCapabilitiesProvider, (previous, next) {
-      if (!next.image && state.pending != null && ref.read(modelSessionReadyProvider)) {
+      final ready = ref.read(modelSessionReadyProvider);
+      if (!next.image && state.pending != null && ready) {
         state = const AttachmentState(note: clearedOnModelSwitchNote);
+      }
+      // The audio edition of the same rule (003 US2, FR-008/FR-009): a pending clip is cleared
+      // (with its note, set by the recording controller) ONLY for a genuinely loaded
+      // audio-incapable model — never during loading/error (the 002 conflation lesson).
+      if (!next.audio && ready) {
+        ref.read(recordingControllerProvider.notifier).clearForCapabilityFlip();
       }
     });
     return const AttachmentState();
@@ -146,8 +157,17 @@ class AttachmentController extends Notifier<AttachmentState> {
 
   void _setPending(PickedImage? picked) {
     if (picked == null) return; // cancel — leave the prior state untouched (FR-003 / edge: cancel)
+    // One attachment per message (003 spec Q3): attaching an image discards a pending/in-progress
+    // voice clip (the recording controller deletes its temp file and stops any preview) and the
+    // one-attachment note rides with the surviving image.
+    final recording = ref.read(recordingControllerProvider);
+    final replacedClip = recording.hasClip || recording.isRecording;
+    if (replacedClip) {
+      ref.read(recordingControllerProvider.notifier).discardForImageAttach();
+    }
     state = AttachmentState(
       pending: PendingAttachment(path: picked.path, mimeType: picked.mimeType),
+      note: replacedClip ? clipReplacedNote : null,
     );
   }
 

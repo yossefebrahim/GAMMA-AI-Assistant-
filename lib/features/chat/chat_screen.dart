@@ -6,6 +6,7 @@ import 'package:ai_assistant/app/widgets/dot_pulse.dart';
 import 'package:ai_assistant/core/model_catalog.dart';
 import 'package:ai_assistant/features/chat/chat_controller.dart';
 import 'package:ai_assistant/features/chat/chat_providers.dart';
+import 'package:ai_assistant/features/chat/recording_controller.dart';
 import 'package:ai_assistant/features/chat/widgets/composer.dart';
 import 'package:ai_assistant/features/chat/widgets/message_bubble.dart';
 import 'package:ai_assistant/infrastructure/gemma/flutter_gemma_service.dart';
@@ -32,13 +33,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   void initState() {
     super.initState();
     // Resource hygiene (FR-029, Principle VIII): free the ~2.4 GB model when backgrounded, reload
-    // it on return.
+    // it on return. Backgrounding also ends a live recording (stop-and-keep when it meets the
+    // minimum — 003 FR-021/US6) and releases the preview player.
     _lifecycle = AppLifecycleListener(
       onStateChange: (state) {
         switch (state) {
           case AppLifecycleState.paused:
           case AppLifecycleState.detached:
           case AppLifecycleState.hidden:
+            ref.read(recordingControllerProvider.notifier).onAppBackgrounded();
             ref.read(gemmaServiceProvider).close();
           case AppLifecycleState.resumed:
             ref.invalidate(modelSessionProvider);

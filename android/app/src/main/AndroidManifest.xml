@@ -22,6 +22,12 @@
          it needs; this is the app-level runtime permission. -->
     <uses-permission android:name="android.permission.CAMERA"/>
 
+    <!-- Audio input (003): mic capture for voice clips, requested at first mic tap through
+         MediaPermissionService (003 R5). Exactly this permission, nothing broader (no storage /
+         background-audio permissions — contracts/media_permission.md #4). `record` declares it in
+         its own manifest too; the app manifest is the audited surface. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+
     <application
         android:label="ai_assistant"
         android:name="${applicationName}"

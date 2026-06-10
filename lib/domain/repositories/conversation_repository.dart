@@ -1,3 +1,4 @@
+import 'package:ai_assistant/domain/entities/audio_attachment.dart';
 import 'package:ai_assistant/domain/entities/conversation.dart';
 import 'package:ai_assistant/domain/entities/image_attachment.dart';
 import 'package:ai_assistant/domain/entities/message.dart';
@@ -19,16 +20,19 @@ abstract interface class ConversationRepository {
   /// Create a new, empty conversation and return it (FR-019).
   Future<Conversation> createConversation();
 
-  /// Append a user message, optionally with an [image] (FR-012). Validates that the message has
-  /// non-empty text after trim **OR** an image (FR-004) — throws [ArgumentError] when both are
-  /// empty. When [image] is given, its bytes have already been persisted to app-private storage by
-  /// the caller (`ImageFileStore`) and `image.path` is the STORED path. Bumps `updatedAt`; sets the
-  /// conversation title from the first message's text if still null, falling back to a label for an
-  /// image-only first message (FR-021).
+  /// Append a user message, optionally with an [image] (FR-012) or an [audio] clip (003 FR-018).
+  /// Validates that the message has non-empty text after trim **OR** an attachment (FR-004) —
+  /// throws [ArgumentError] when all are empty — and that at most ONE of [image]/[audio] is given
+  /// (audio XOR image, 003 spec Q3) — throws [ArgumentError] on both. When an attachment is given,
+  /// its bytes have already been persisted to app-private storage by the caller
+  /// (`ImageFileStore`/`AudioFileStore`) and its `path` is the STORED path. Bumps `updatedAt`;
+  /// sets the conversation title from the first message's text if still null, falling back to a
+  /// label for an attachment-only first message (FR-021).
   Future<Message> appendUserMessage(
     int conversationId,
     String text, {
     ImageAttachment? image,
+    AudioAttachment? audio,
   });
 
   /// Create an assistant message in `streaming` state; returns its id (FR-013).
@@ -44,7 +48,10 @@ abstract interface class ConversationRepository {
   /// Ordered turns for context assembly, including stopped-partial turns (FR-017).
   Future<List<Message>> loadTurns(int conversationId);
 
-  /// Delete a conversation: removes its image files (FR-019), then deletes the row so its messages
-  /// cascade, making them unretrievable (FR-022). No orphaned image files remain.
+  /// Delete a conversation: removes its image AND audio files (FR-019; 003
+  /// contracts/conversation_repository.md #3 — file cleanup happens BEFORE the cascading row
+  /// delete, since after the cascade the paths are unknowable), then deletes the row so its
+  /// messages cascade, making them unretrievable (FR-022). No orphaned media files remain from
+  /// this path.
   Future<void> deleteConversation(int conversationId);
 }

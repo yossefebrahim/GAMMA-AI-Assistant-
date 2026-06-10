@@ -5,6 +5,7 @@ import 'package:ai_assistant/app/theme/app_spacing.dart';
 import 'package:ai_assistant/app/theme/app_text.dart';
 import 'package:ai_assistant/app/widgets/dot_pulse.dart';
 import 'package:ai_assistant/domain/entities/message.dart';
+import 'package:ai_assistant/features/chat/widgets/audio_chip.dart';
 import 'package:flutter/material.dart';
 
 /// A single turn (design-system §8). Differentiation is by **alignment + subtle fill, never
@@ -53,12 +54,19 @@ class MessageBubble extends StatelessWidget {
             _BubbleImage(path: message.image!.path),
             if (message.content.isNotEmpty) const SizedBox(height: AppSpacing.s8),
           ],
+          // The attached voice clip renders as a static chip — duration label, no playback this
+          // slice (003 spec Q2/FR-018) — again independent of current capabilities.
+          if (message.audio != null) ...[
+            AudioChip.history(path: message.audio!.path),
+            if (message.content.isNotEmpty) const SizedBox(height: AppSpacing.s8),
+          ],
           if (isStreaming && message.content.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: AppSpacing.s4),
               child: DotPulse(color: colors.accent),
             )
-          else if (message.content.isNotEmpty || message.image == null)
+          else if (message.content.isNotEmpty ||
+              (message.image == null && message.audio == null))
             Text(
               message.content,
               style: theme.textTheme.bodyLarge?.copyWith(color: colors.textPrimary),

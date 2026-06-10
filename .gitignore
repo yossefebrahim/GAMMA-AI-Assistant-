@@ -43,3 +43,6 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Gradle build output at the android module root (created by `flutter build apk`).
+/android/build/

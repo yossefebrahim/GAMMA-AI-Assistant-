@@ -1,3 +1,4 @@
+import 'package:ai_assistant/domain/entities/audio_input.dart';
 import 'package:ai_assistant/domain/entities/chat_turn.dart';
 import 'package:ai_assistant/domain/entities/image_input.dart';
 import 'package:ai_assistant/domain/entities/model_capabilities.dart';
@@ -25,6 +26,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// image-bearing history turns are sent via `Message.withImage`/`Message.imageOnly`, and the
 /// plugin's image decode/validate/resize (its `ImageProcessor`, 896², 10 MB) runs natively off the
 /// UI isolate (R1/R4). Image failures are mapped to a domain [ImageProcessingException] (FR-020).
+///
+/// AUDIO INPUT (003): when [ModelCapabilities.audio] is true, `supportAudio: true` is threaded to
+/// BOTH backend activation attempts and to `createChat` (→ `enableAudioModality`); the current
+/// prompt and audio-bearing history turns map to `Message.withAudio`/`Message.audioOnly`. The
+/// seam gates ungated audio with its own [StateError] — load-bearing, because the plugin's FFI
+/// path SILENTLY DROPS audio when the flag was off at load (003 research R1, spike §1.2). The
+/// audio encoder runs CPU-side at generation start by plugin design; its cost lands in the
+/// first-token wait. Failures on audio-bearing prompts map to [AudioProcessingException],
+/// narrowly scoped to the current prompt (003 guarantee 15 / 002 audit L4).
 ///
 /// KEPT-WARM SESSION (the R1 "later optimization", now load-bearing for responsiveness): the
 /// plugin executes session create / prompt prefill / image encode ON THE ANDROID MAIN THREAD
@@ -103,10 +113,14 @@ class FlutterGemmaService implements GemmaService {
       ).fromFile(filePath).install();
 
       // Prefer GPU; fall back to CPU if the backend can't initialize / OOMs on an 8 GB device (R1).
-      // The model is created with vision enabled (and one image cap) when the catalog declares it.
+      // The model is created with vision/audio enabled when the catalog declares them — the
+      // modality flags ride BOTH attempts (003 R7.2: if GPU init fails with audio enabled, CPU is
+      // attempted with audio still on; never a silent capability flip).
       _lastActivationError = null;
-      _model = await _activate(PreferredBackend.gpu, supportImage: capabilities.image) ??
-          await _activate(PreferredBackend.cpu, supportImage: capabilities.image);
+      _model = await _activate(PreferredBackend.gpu,
+              supportImage: capabilities.image, supportAudio: capabilities.audio) ??
+          await _activate(PreferredBackend.cpu,
+              supportImage: capabilities.image, supportAudio: capabilities.audio);
       if (_model == null) {
         // Carry the swallowed backend error so the failure is diagnosable rather than generic (002
         // audit): without this, a vision-load rejection surfaces downstream as a misleading
@@ -116,13 +130,14 @@ class FlutterGemmaService implements GemmaService {
           cause: _lastActivationError,
         );
       }
-      // Vision modality on the chat session follows the catalog capability
-      // (enableVisionModality: supportImage), one image per message this slice (FR-005/FR-006, R1).
-      // maxNumImages lives on getActiveModel (createChat has no such param, even in 0.16.x).
+      // Vision/audio modality on the chat session follows the catalog capability
+      // (enableVisionModality: supportImage / enableAudioModality: supportAudio), one image per
+      // message this slice (FR-005/FR-006, R1). maxNumImages lives on getActiveModel (createChat
+      // has no such param, even in 0.16.x).
       _chat = await _model!.createChat(
         modelType: ModelType.gemma4,
         supportImage: capabilities.image,
-        supportAudio: false,
+        supportAudio: capabilities.audio,
         supportsFunctionCalls: false,
         isThinking: false,
       );
@@ -140,6 +155,7 @@ class FlutterGemmaService implements GemmaService {
   Future<InferenceModel?> _activate(
     PreferredBackend backend, {
     required bool supportImage,
+    required bool supportAudio,
   }) async {
     try {
       return await FlutterGemma.getActiveModel(
@@ -147,15 +163,17 @@ class FlutterGemmaService implements GemmaService {
         preferredBackend: backend,
         supportImage: supportImage,
         maxNumImages: supportImage ? 1 : null,
+        supportAudio: supportAudio,
       );
     } catch (error, stackTrace) {
       // Return null so the GPU→CPU fallback still proceeds, but DON'T discard the cause: keep it for
       // the ModelLoadException, and log it so an on-device load failure is visible in logcat instead
-      // of a silent capability flip (002 audit). A backend that fails only with vision enabled is the
-      // smoking gun for the "image removed — this model does not accept images" symptom.
+      // of a silent capability flip (002 audit). A backend that fails only with a modality enabled is
+      // the smoking gun for a "removed — this model does not accept …" symptom.
       _lastActivationError = error;
       debugPrint(
-        'GemmaService: $backend activation failed (supportImage: $supportImage): $error\n$stackTrace',
+        'GemmaService: $backend activation failed (supportImage: $supportImage, '
+        'supportAudio: $supportAudio): $error\n$stackTrace',
       );
       return null;
     }
@@ -166,7 +184,13 @@ class FlutterGemmaService implements GemmaService {
     required List<ChatTurn> history,
     required String prompt,
     ImageInput? image,
+    AudioInput? audio,
   }) async* {
+    // One attachment per message — audio XOR image (003 guarantee 14, spec Q3). Checked before
+    // the loaded gate: it is state-free, so the contract is unit-testable without a device.
+    if (image != null && audio != null) {
+      throw StateError('generate() called with both an image and audio');
+    }
     final chat = _chat;
     if (!_loaded || chat == null) {
       throw StateError('generate() called with no model loaded');
@@ -174,6 +198,12 @@ class FlutterGemmaService implements GemmaService {
     // The caller must gate on capabilities before sending an image (FR-005, contract #12).
     if (image != null && !_capabilities.image) {
       throw StateError('generate(image:) called while the model does not support images');
+    }
+    // The audio gate is LOAD-BEARING, not ceremony (003 guarantee 13): the plugin's FFI path
+    // silently drops audio that wasn't enabled at load (research R1), so without this StateError a
+    // mis-configured load would produce replies that ignore the clip with no error anywhere.
+    if (audio != null && !_capabilities.audio) {
+      throw StateError('generate(audio:) called while the model does not support audio');
     }
 
     final involvesImage = image != null || history.any((turn) => turn.image != null);
@@ -198,7 +228,7 @@ class FlutterGemmaService implements GemmaService {
           replayHistory: history.map(_toPluginMessage).toList(),
         );
       }
-      await chat.addQueryChunk(_promptMessage(prompt, image));
+      await chat.addQueryChunk(_promptMessage(prompt, image, audio));
 
       final reply = StringBuffer();
       await for (final response in chat.generateChatResponseAsync()) {
@@ -206,7 +236,7 @@ class FlutterGemmaService implements GemmaService {
           reply.write(response.token);
           yield response.token;
         }
-        // ThinkingResponse / FunctionCallResponse are ignored this slice (text + image only).
+        // ThinkingResponse / FunctionCallResponse are ignored this slice (text + image + audio).
       }
 
       // Clean completion: the native session now holds history + this exchange. (Skipped when the
@@ -215,15 +245,28 @@ class FlutterGemmaService implements GemmaService {
       if (epoch == _sessionEpoch) {
         _sessionTurns = [
           ...fingerprints,
-          _TurnFingerprint(isUser: true, text: prompt, imageByteLength: image?.bytes.length),
-          _TurnFingerprint(isUser: false, text: reply.toString(), imageByteLength: null),
+          _TurnFingerprint(
+            isUser: true,
+            text: prompt,
+            imageByteLength: image?.bytes.length,
+            audioByteLength: audio?.bytes.length,
+          ),
+          _TurnFingerprint(
+              isUser: false, text: reply.toString(), imageByteLength: null, audioByteLength: null),
         ];
       }
     } catch (error) {
+      if (error is StateError) rethrow;
+      // Map native failures on an audio-bearing CURRENT PROMPT to the typed, user-facing failure
+      // (003 guarantee 15 — narrowly scoped per 002 audit L4: errors on turns that merely replay
+      // audio history propagate unchanged so they aren't misattributed to a clip).
+      if (audio != null) {
+        throw AudioProcessingException('could not process the audio', cause: error);
+      }
       // Map image decode/validation/resize/OOM failures to a typed, user-facing failure (FR-020,
       // Principle V). Text-only failures propagate unchanged so the chat controller keeps the
       // partial reply as stopped-partial.
-      if (involvesImage && error is! StateError) {
+      if (involvesImage) {
         throw ImageProcessingException('could not process the image', cause: error);
       }
       rethrow;
@@ -240,9 +283,18 @@ class FlutterGemmaService implements GemmaService {
     return true;
   }
 
-  /// Map a history [turn] to the plugin's `Message`, carrying its image when present.
+  /// Map a history [turn] to the plugin's `Message`, carrying its image or clip when present
+  /// (003 guarantee 16: audio-bearing history replays via `Message.withAudio`/`audioOnly` so
+  /// follow-ups keep referring to the clip).
   Message _toPluginMessage(ChatTurn turn) {
     final image = turn.image;
+    final audio = turn.audio;
+    if (audio != null) {
+      if (turn.text.isEmpty) {
+        return Message.audioOnly(audioBytes: audio.bytes, isUser: turn.isUser);
+      }
+      return Message.withAudio(text: turn.text, audioBytes: audio.bytes, isUser: turn.isUser);
+    }
     if (image == null) {
       return Message.text(text: turn.text, isUser: turn.isUser);
     }
@@ -252,8 +304,15 @@ class FlutterGemmaService implements GemmaService {
     return Message.withImage(text: turn.text, imageBytes: image.bytes, isUser: turn.isUser);
   }
 
-  /// Build the current prompt message: text-only, image+text, or image-only (empty text, FR-004).
-  Message _promptMessage(String prompt, ImageInput? image) {
+  /// Build the current prompt message: text-only, media+text, or media-only (empty text, FR-004).
+  /// At most one of [image]/[audio] is non-null (gated above).
+  Message _promptMessage(String prompt, ImageInput? image, AudioInput? audio) {
+    if (audio != null) {
+      if (prompt.isEmpty) {
+        return Message.audioOnly(audioBytes: audio.bytes, isUser: true);
+      }
+      return Message.withAudio(text: prompt, audioBytes: audio.bytes, isUser: true);
+    }
     if (image == null) {
       return Message.text(text: prompt, isUser: true);
     }
@@ -286,32 +345,41 @@ class FlutterGemmaService implements GemmaService {
   }
 }
 
-/// Cheap identity of one turn the native session has ingested: role + exact text + image byte
-/// LENGTH (stored image files are write-once, so same path ⇒ same length ⇒ same image — without
-/// retaining or comparing megabytes of bytes, Principle VIII).
+/// Cheap identity of one turn the native session has ingested: role + exact text + image/audio
+/// byte LENGTH (stored media files are write-once, so same path ⇒ same length ⇒ same media —
+/// without retaining or comparing megabytes of bytes, Principle VIII). `audioByteLength` keeps a
+/// warm session from being wrongly matched across differing clips (003 guarantee 16).
 class _TurnFingerprint {
   const _TurnFingerprint({
     required this.isUser,
     required this.text,
     required this.imageByteLength,
+    required this.audioByteLength,
   });
 
   _TurnFingerprint.ofTurn(ChatTurn turn)
-      : this(isUser: turn.isUser, text: turn.text, imageByteLength: turn.image?.bytes.length);
+      : this(
+          isUser: turn.isUser,
+          text: turn.text,
+          imageByteLength: turn.image?.bytes.length,
+          audioByteLength: turn.audio?.bytes.length,
+        );
 
   final bool isUser;
   final String text;
   final int? imageByteLength;
+  final int? audioByteLength;
 
   @override
   bool operator ==(Object other) =>
       other is _TurnFingerprint &&
       other.isUser == isUser &&
       other.text == text &&
-      other.imageByteLength == imageByteLength;
+      other.imageByteLength == imageByteLength &&
+      other.audioByteLength == audioByteLength;
 
   @override
-  int get hashCode => Object.hash(isUser, text, imageByteLength);
+  int get hashCode => Object.hash(isUser, text, imageByteLength, audioByteLength);
 }
 
 /// Kept-alive [GemmaService] (R5) — never auto-disposed, so the ~2.4 GB model doesn't thrash on

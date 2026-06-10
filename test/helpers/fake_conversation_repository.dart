@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:ai_assistant/domain/entities/audio_attachment.dart';
 import 'package:ai_assistant/domain/entities/conversation.dart';
 import 'package:ai_assistant/domain/entities/image_attachment.dart';
 import 'package:ai_assistant/domain/entities/message.dart';
@@ -22,9 +23,13 @@ class FakeConversationRepository implements ConversationRepository {
   static const int maxTitleLength = 40;
   static const String fallbackTitle = 'untitled';
   static const String imageOnlyTitle = 'image';
+  static const String audioOnlyTitle = 'voice clip';
 
   /// Stored paths handed to [deleteConversation] — lets tests assert image cleanup (FR-019).
   final List<String> deletedImagePaths = <String>[];
+
+  /// Stored audio paths handed to [deleteConversation] — lets tests assert clip cleanup (003).
+  final List<String> deletedAudioPaths = <String>[];
 
   DateTime _now() => DateTime.now().toUtc();
 
@@ -83,14 +88,23 @@ class FakeConversationRepository implements ConversationRepository {
     int conversationId,
     String text, {
     ImageAttachment? image,
+    AudioAttachment? audio,
   }) async {
+    // One attachment per message — audio XOR image (003 spec Q3), mirroring the drift repo.
+    if (image != null && audio != null) {
+      throw ArgumentError.value(
+        audio,
+        'audio',
+        'A user message carries at most one attachment (audio XOR image)',
+      );
+    }
     final trimmed = text.trim();
-    // Valid with text OR an image (FR-004); only both-empty is rejected.
-    if (trimmed.isEmpty && image == null) {
+    // Valid with text OR an attachment (FR-004); only all-empty is rejected.
+    if (trimmed.isEmpty && image == null && audio == null) {
       throw ArgumentError.value(
         text,
         'text',
-        'User message must have non-empty text or an image',
+        'User message must have non-empty text or an attachment',
       );
     }
     final now = _now();
@@ -104,11 +118,14 @@ class FakeConversationRepository implements ConversationRepository {
       createdAt: now,
       status: MessageStatus.complete,
       image: image,
+      audio: audio,
     );
     list.add(message);
 
     final conversation = _conversations[conversationId]!;
-    final derivedTitle = trimmed.isNotEmpty ? _deriveTitle(trimmed) : imageOnlyTitle;
+    final derivedTitle = trimmed.isNotEmpty
+        ? _deriveTitle(trimmed)
+        : (audio != null ? audioOnlyTitle : imageOnlyTitle);
     _conversations[conversationId] = conversation.copyWith(
       title: conversation.title ?? derivedTitle,
       updatedAt: now,
@@ -176,11 +193,14 @@ class FakeConversationRepository implements ConversationRepository {
 
   @override
   Future<void> deleteConversation(int conversationId) async {
-    // Record image paths so tests can assert file cleanup (FR-019), then drop the conversation.
+    // Record media paths so tests can assert file cleanup (FR-019 / 003), then drop the
+    // conversation.
     final removed = _messages[conversationId] ?? const <Message>[];
     for (final message in removed) {
-      final path = message.image?.path;
-      if (path != null) deletedImagePaths.add(path);
+      final imagePath = message.image?.path;
+      if (imagePath != null) deletedImagePaths.add(imagePath);
+      final audioPath = message.audio?.path;
+      if (audioPath != null) deletedAudioPaths.add(audioPath);
     }
     _conversations.remove(conversationId);
     _messages.remove(conversationId);
