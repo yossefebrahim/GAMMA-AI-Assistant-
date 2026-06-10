@@ -73,6 +73,7 @@ dependencies:
 
   # Offline-bundled fonts; runtime fetching disabled in main.dart (R6).
   google_fonts: ^8.1.0
+  gpt_markdown: ^1.1.7
 
 dev_dependencies:
   flutter_test:

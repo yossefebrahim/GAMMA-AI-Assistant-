@@ -7,6 +7,7 @@ import 'package:ai_assistant/app/widgets/dot_pulse.dart';
 import 'package:ai_assistant/domain/entities/message.dart';
 import 'package:ai_assistant/features/chat/widgets/audio_chip.dart';
 import 'package:flutter/material.dart';
+import 'package:gpt_markdown/gpt_markdown.dart';
 
 /// A single turn (design-system §8). Differentiation is by **alignment + subtle fill, never
 /// color**: the user turn is right-aligned with a `surfaceContainerHigh` fill; the assistant turn
@@ -67,10 +68,18 @@ class MessageBubble extends StatelessWidget {
             )
           else if (message.content.isNotEmpty ||
               (message.image == null && message.audio == null))
-            Text(
-              message.content,
-              style: theme.textTheme.bodyLarge?.copyWith(color: colors.textPrimary),
-            ),
+            // Assistant turns render markdown (styled via the GptMarkdownThemeData tokens in
+            // AppTheme); user turns stay literal — what was typed is what history shows.
+            if (isUser)
+              Text(
+                message.content,
+                style: theme.textTheme.bodyLarge?.copyWith(color: colors.textPrimary),
+              )
+            else
+              GptMarkdown(
+                message.content,
+                style: theme.textTheme.bodyLarge?.copyWith(color: colors.textPrimary),
+              ),
           if (isStoppedPartial) ...[
             const SizedBox(height: AppSpacing.s8),
             Text(AppText.spec('stopped'), style: theme.textTheme.labelSmall),
