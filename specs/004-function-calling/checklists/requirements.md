@@ -13,10 +13,10 @@
 
 ## Requirement Completeness
 
-- [ ] No [NEEDS CLARIFICATION] markers remain — **3 markers OPEN by design** (Q1 confirmation
-      policy, Q2 timer mechanism, Q3 switch_backend exclusion), reserved for `/speckit-clarify`
-      per the feature brief; all three are product decisions explicitly assigned to the product
-      owner, each with a documented default posture in the spec
+- [x] No [NEEDS CLARIFICATION] markers remain — all 3 resolved in `/speckit-clarify` session
+      2026-06-10 (Q1 auto-execute; Q2 system clock hand-off, silent; Q3 switch_backend stays
+      excluded) and integrated into US2/US4, FR-015/016/028, Edge Cases, Key Entities, Out of
+      Scope
 - [x] Requirements are testable and unambiguous (outside the 3 open markers)
 - [x] Success criteria are measurable
 - [x] Success criteria are technology-agnostic (no implementation details)
@@ -34,8 +34,7 @@
 
 ## Notes
 
-- The three open markers are intentionally deferred to `/speckit-clarify` (the feature brief
-  names them as clarify questions). Spec is otherwise complete; resolve Q1–Q3 and re-check the
-  Requirement Completeness item before `/speckit-plan`.
+- All checklist items pass (16/16) as of the 2026-06-10 clarify session. Spec is ready for
+  `/speckit-plan`.
 - The runtime-specific evidence (leak suppression, replay requirement) lives in
   spike-findings.md and is referenced, not duplicated, here.

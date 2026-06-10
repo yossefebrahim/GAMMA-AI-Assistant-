@@ -4,28 +4,29 @@
 
 **Created**: 2026-06-10
 
-**Status**: Draft — three product decisions pending `/speckit-clarify` (see Clarifications)
+**Status**: Draft — clarifications resolved 2026-06-10
 
 **Input**: User description: "Natural-language invocation of local device tools (function calling) — the assistant can use a small registry of LOCAL, on-device tools when the user asks for something a tool can do: set_theme, get_device_info, set_timer, summarize_clipboard. The model decides when to call; every call is VISIBLE in the conversation as an inline tool chip in design-system style — no silent execution. Tool-use affordances and behavior are gated by a functionCalling capability flag on the model catalog entry. Tool calls and results persist in conversation history and are replayed into the model context. Hallucinated tools or invalid arguments degrade to a visible error chip plus a normal text response — never a crash, never silent loss. Out of scope: external/network tools, multi-step autonomous chains, switch_backend (pending clarify). Phase 0 spike (spike-findings.md) verified function calling works reliably end-to-end on the reference device (83.3% correct-call rate, zero hallucinated tools, zero spurious calls)."
 
 ## Clarifications
 
-Three product decisions are deliberately **left open for `/speckit-clarify`** — each was named in
-the feature brief as a decision the product owner must make, and the spec marks them inline:
+### Session 2026-06-10
 
-- **Q1 — Confirmation policy for state-changing tools** (`set_theme`, `set_timer`): execute
-  immediately like the read-only tools, or insert an inline confirm step (a small approve/dismiss
-  affordance in the conversation) before the tool runs? Read-only tools (`get_device_info`,
-  `summarize_clipboard`) auto-execute either way. → FR-016.
-- **Q2 — Timer mechanism** for `set_timer`: an in-app countdown (visible in the conversation,
-  ends with an in-app alert; dies with the app) or a hand-off to the device's own clock app (system
-  reliability and lock-screen surface, but the user briefly leaves the conversation and the result
-  is "timer handed to the clock app", not a live countdown)? → FR-019.
-- **Q3 — Should `switch_backend` exist as a tool at all?** Backend selection (how the model runs
-  on the device) is infrastructure in this product. Exposing it to the model would let a casual
-  phrase ("make it faster") silently change how inference executes, with reliability and memory
-  consequences. Default scope EXCLUDES it; this question confirms or overrides that exclusion.
-  → Out of Scope.
+- **Q: Confirmation policy for state-changing tools (`set_theme`, `set_timer`) — auto-execute or
+  inline confirm?** → **A: Auto-execute.** All four v1 tools execute immediately on a valid call;
+  the tool chip is the visibility safeguard. Rationale: both mutations are low-risk and instantly
+  reversible (theme toggles back; a timer can be cancelled in the clock app), and the spike
+  measured zero spurious calls in 20 trials — an extra tap would erase the "just ask" value
+  without adding real protection. → FR-016.
+- **Q: `set_timer` mechanism — in-app countdown or system clock hand-off?** → **A: System clock
+  hand-off, silent (skip-UI).** The timer is handed to the device's clock app without leaving the
+  conversation; it survives the app being killed and rings on the lock screen. An in-app
+  countdown would die with the app process unless this slice built alarm/notification
+  infrastructure it didn't budget. → FR-015.
+- **Q: Should `switch_backend` be exposed as a callable tool?** → **A: No — keep excluded.**
+  Backend selection is infrastructure; a model-triggered switch would unload/reload the model
+  (~12 s, can fail over from GPU) on a casual phrase. Excluded from this feature's scope (not
+  merely deferred). → Out of Scope.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -65,10 +66,9 @@ Delivers standalone value: the assistant can answer device questions it previous
 ### User Story 2 - Change the app theme by asking (Priority: P2)
 
 A user says "switch to light mode" (or "go dark again"). The assistant invokes `set_theme`; the
-app's theme actually changes; a tool chip records the action and its outcome in the conversation.
-The theme change behaves exactly as if made from settings — it persists across restarts.
-Whether the tool executes immediately or after an inline confirmation is
-[NEEDS CLARIFICATION: Q1 — confirmation policy for state-changing tools: auto-execute vs inline confirm].
+app's theme changes immediately (auto-execute per Clarifications Q1 — the chip is the visibility
+safeguard); a tool chip records the action and its outcome in the conversation. The theme change
+behaves exactly as if made from settings — it persists across restarts.
 
 **Why this priority**: First state-changing tool — it proves tools can *do* things, not just
 read things, and it exercises the confirmation policy decision. Theme is the safest possible
@@ -81,16 +81,13 @@ already-active theme is handled gracefully.
 **Acceptance Scenarios**:
 
 1. **Given** the app is in dark theme, **When** the user sends "switch to light theme", **Then**
-   (after confirmation, if Q1 requires it) the app switches to light theme, a tool chip records
-   the action and success, and the assistant's reply acknowledges the change.
+   the app switches to light theme immediately, a tool chip records the action and success, and
+   the assistant's reply acknowledges the change.
 2. **Given** the app is already in dark theme, **When** the user asks for dark theme, **Then** the
    tool reports the theme was already active (idempotent success — no error), and the reply says
    so.
 3. **Given** the theme was changed via the tool, **When** the app is killed and relaunched,
    **Then** the chosen theme is still active (same persistence as a settings change).
-4. **Given** Q1 resolves to "inline confirm", **When** the user dismisses the confirmation,
-   **Then** the tool does not run, the chip records the declined state, and the assistant
-   acknowledges without executing.
 
 ---
 
@@ -125,24 +122,24 @@ both.
 ### User Story 4 - Set a timer by asking (Priority: P2)
 
 A user says "set a timer for 5 minutes". The assistant invokes `set_timer` with the requested
-duration; a tool chip records the action; a timer actually starts. The mechanism — an in-app
-countdown versus handing off to the device's clock app — is
-[NEEDS CLARIFICATION: Q2 — set_timer mechanism: in-app timer vs system clock hand-off].
-Either way the user gets an honest record of what was set and for how long.
+duration; the timer is handed to the device's clock app silently — the user stays in the
+conversation, and the timer survives the app being killed and rings on the lock screen
+(Clarifications Q2). The tool chip records what was set and for how long; the assistant's reply
+confirms the hand-off honestly ("a 5-minute timer is running in your clock app").
 
 **Why this priority**: The second state-changing tool, with a real-world side effect and a
 duration argument — it exercises argument extraction from natural language ("five minutes",
 "90 seconds", "an hour and a half") more than any other tool in the set.
 
 **Independent Test**: Ask for timers in varied phrasings and durations; verify the parsed
-duration matches the request, the chip records it, and the timer demonstrably runs (in-app
-countdown visible, or the clock app shows the timer, per Q2).
+duration matches the request, the chip records it, and the device's clock app demonstrably holds
+the running timer.
 
 **Acceptance Scenarios**:
 
 1. **Given** a tool-capable model, **When** the user sends "set a timer for 5 minutes", **Then**
-   (after confirmation, if Q1 requires it) a timer for 5 minutes starts via the Q2 mechanism and
-   the chip records tool, duration, and success.
+   a 5-minute timer starts in the device's clock app without leaving the conversation, and the
+   chip records tool, duration, and success.
 2. **Given** the user phrases the duration in words ("a quarter of an hour"), **When** the call is
    made, **Then** the started timer matches the intended duration.
 3. **Given** the user asks for an unreasonable duration (zero, negative, or absurdly long),
@@ -263,9 +260,11 @@ each.
 - **Tool turn in flight when the app is backgrounded**: execution completes or fails on return;
   the chip must end in a terminal state either way (never frozen "running" in history).
 - **set_theme to the already-active theme**: idempotent success, not an error (US2/AS2).
-- **Timer already running when a second timer is requested**: behavior depends on Q2 mechanism
-  (system clock app stacks timers natively; an in-app timer must define replace-or-reject —
-  documented with Q2's resolution).
+- **Timer already running when a second timer is requested**: the system clock app stacks
+  timers natively (Q2 resolution) — each request hands off a new timer; no replace-or-reject
+  logic in the app.
+- **No clock app can accept the timer hand-off**: structured error in the chip, honest reply
+  (FR-015) — never a silent no-op.
 - **Clipboard changes between the user's request and tool execution**: the tool reads whatever
   is present at execution time — the chip's recorded result is the truth of what was read.
 - **Attachment + tool turn**: a message carrying an image or voice clip may still trigger a tool
@@ -336,13 +335,16 @@ each.
 - **FR-014**: `set_theme` MUST switch the app between dark and light theme with exactly the same
   effect and persistence as the equivalent settings change; requesting the already-active theme
   MUST report idempotent success.
-- **FR-015**: `set_timer` MUST start a countdown of the requested duration via the mechanism
-  resolved in Q2; it MUST validate duration bounds (positive, within a documented maximum) and
-  decline out-of-range requests with a structured error. Mechanism:
-  [NEEDS CLARIFICATION: Q2 — set_timer mechanism: in-app timer vs system clock hand-off].
-- **FR-016**: Read-only tools (`get_device_info`, `summarize_clipboard`) MUST auto-execute on a
-  valid call. State-changing tools (`set_theme`, `set_timer`) MUST follow the confirmation policy:
-  [NEEDS CLARIFICATION: Q1 — confirmation policy for state-changing tools: auto-execute vs inline confirm step].
+- **FR-015**: `set_timer` MUST hand the requested countdown to the device's clock app silently
+  (no foreground switch — the user stays in the conversation; Clarifications Q2), so the timer
+  survives the app's death and rings on the lock screen. It MUST validate duration bounds
+  (positive, within a documented maximum) and decline out-of-range requests with a structured
+  error. If the device has no app able to accept the timer, the tool MUST return a structured
+  error (rendered in the chip) rather than failing silently — the assistant's reply reflects it.
+- **FR-016**: All four v1 tools auto-execute on a valid call (Clarifications Q1) — the tool chip
+  is the visibility safeguard; no inline confirmation step exists in this slice. The registry
+  still records each tool's read-only vs state-changing class (FR-007) so a future policy change
+  is a data change, not a redesign.
 - **FR-017**: Every tool MUST execute entirely on-device with no network access (Principle I);
   tool results, including clipboard content, MUST never leave the device.
 
@@ -379,10 +381,10 @@ each.
 
 - **FR-027**: The interface MUST remain responsive during tool execution and the surrounding
   generation (existing streaming/cancel guarantees apply to tool turns; stop remains available).
-- **FR-028**: Any new interactive element introduced by this feature (e.g., the inline confirm
-  affordance if Q1 requires one) MUST meet the 48dp touch-target and WCAG AA contrast floor;
-  tool-chip text MUST use AA-passing tokens (chips are essential content — never below the
-  secondary-text contrast tier).
+- **FR-028**: Any new interactive element introduced by this feature MUST meet the 48dp
+  touch-target and WCAG AA contrast floor; tool-chip text MUST use AA-passing tokens (chips are
+  essential content — never below the secondary-text contrast tier). (Post-clarification, the
+  chip itself is expected to be the only new surface — it is non-interactive in v1.)
 - **FR-029**: All new UI MUST use centralized design tokens (no hardcoded colors/fonts) and the
   established motion language (dot-matrix/pulse motifs for the chip's running state, mechanical
   150–250ms transitions).
@@ -394,8 +396,7 @@ each.
   Static in v1 (four entries); not user-editable.
 - **Tool Invocation**: one attempted call within a conversation — which tool, the arguments as
   requested by the model, validation outcome, execution outcome (success / structured error /
-  declined / skipped), and its position in the conversation flow. Persisted as a distinct
-  message kind.
+  skipped), and its position in the conversation flow. Persisted as a distinct message kind.
 - **Tool Result**: the structured outcome attached to an invocation — the data returned (or the
   error), bounded in size, fed back to the model and rendered as the chip's quiet result line.
 - **Conversation (existing)**: gains tool turns among its messages; deletion cascade covers them.
@@ -482,14 +483,16 @@ each.
   after at most one call. Chaining (call → call → call without user turns) is a future,
   deliberate decision.
 - **`switch_backend` as a tool** — backend selection is infrastructure, and exposing it to
-  casual natural language has reliability/memory consequences. EXCLUDED from default scope;
-  Q3 in `/speckit-clarify` confirms or overrides this exclusion.
+  casual natural language has reliability/memory consequences (a model-triggered switch would
+  unload/reload the model). EXCLUDED — confirmed in Clarifications (2026-06-10), not merely
+  deferred.
 - **User-defined or third-party tools** (a tool marketplace, plugins): the registry is static and
   ships with the app.
 - **Proactive tool use** (the assistant volunteering tool actions unprompted in an otherwise
   unrelated conversation).
-- **Voice-triggered confirmations** (confirming a state-changing tool by voice); confirmation, if
-  Q1 requires it, is a tap.
+- **Confirmation flows of any kind** (inline confirm, undo affordances): all v1 tools
+  auto-execute per Clarifications Q1; a future confirmation policy is enabled by the registry's
+  read-only/state-changing classes but not built in this slice.
 - **Tool use inside multimodal turns being specially optimized** — attachments and tools may
   coexist (Edge Cases) but no tool consumes image/audio content in v1 (no "describe my screenshot"
   tool).
