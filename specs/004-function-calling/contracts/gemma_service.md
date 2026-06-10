@@ -41,9 +41,12 @@ reconstruct tool turns — see data-model §3.
     to 003 behavior (`tools: const []`, `supportsFunctionCalls: false`, no tool system
     instruction) and `generate` emits only `TextDelta`s. Pinned by a parity test (SC-007).
 20. **Leak suppression (FR-004, structural)**: no raw tool-call JSON ever crosses the seam as
-    `TextDelta`. The `LeakFilter` withholds `{`-prefixed accumulating text while tools are
-    active; discards it when the turn ends in `ToolCallRequested`; flushes it verbatim when the
-    turn ends without a call (prose fidelity). Unit-tested against the spike's captured shapes.
+    `TextDelta`. The `LeakFilter` operates at **chunk granularity** (the leak is a chunk-level,
+    position-independent phenomenon that can FOLLOW legitimate prose in the same turn): while
+    tools are active, from the first chunk whose trimmed text starts with `{`, all subsequent
+    text is withheld; it is discarded when the turn ends in `ToolCallRequested` and flushed
+    verbatim when the turn ends without a call (prose fidelity). Unit-tested against the
+    spike's captured shapes, including prose-then-leak-then-call.
 21. **Call event is final and typed**: `ToolCallRequested(name, args, extraCallCount)` is always
     the last event of its stream (plugin yields it at end-of-stream). Parallel calls map to ONE
     event: first call + `extraCallCount` (FR-006/FR-024 handled by the controller).

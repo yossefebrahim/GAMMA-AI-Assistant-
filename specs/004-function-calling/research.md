@@ -18,14 +18,18 @@ The seam maps:
 | tool-use guidance | `createChat(systemInstruction: …)` | R6 — the reliability lever; rides the same conversation config |
 | call event | final stream element `FunctionCallResponse{name, args}` (or `ParallelFunctionCallResponse{calls}`) from `generateChatResponseAsync()` | end-of-stream only on the gemma4 path — never mid-stream; args arrive escape-token-stripped and schema-shaped (spike: 10/10 valid) |
 | tool result return | `chat.addQuery(Message.toolResponse(toolName:, response:))` then a fresh `generateChatResponseAsync()` | manual loop; no auto-resume; on Android/.litertlm the result reaches the model as a user-role `<tool_response>` text block |
-| history replay | `Message.toolCall(text: <raw SDK JSON>)` + `Message.toolResponse(...)` in `clearHistory(replayHistory:)` | the plugin's own streamed history OMITS tool-call turns — the app DB is the source of truth; the seam reconstructs the raw JSON shape `{"role":"assistant","tool_calls":[{"type":"function","function":{"name":…,"arguments":…}}]}` observed verbatim in the spike leak. **Replay fidelity is a quickstart device-verification item (V6)** |
+| history replay | `Message.toolCall(text: <raw SDK JSON>)` + `Message.toolResponse(...)` in `clearHistory(replayHistory:)` | the plugin's own streamed history OMITS tool-call turns — the app DB is the source of truth; the seam reconstructs the raw JSON shape `{"role":"assistant","tool_calls":[{"type":"function","function":{"name":…,"arguments":…}}]}` — captured verbatim from the device run (spike §3 "Captured leak payload"). The `Message.toolCall(text:)` factory exists at message.dart:153-162 (spike §1.4). **Replay fidelity — whether the model treats the reconstruction as its own prior turn — is device-verified in quickstart V6** |
 
 **Leak suppression**: `extractTextFromResponse` passes chunks without a `content` key through
 verbatim, so on **every** call turn the raw SDK JSON streams through the text channel before the
-typed event (spike: 10/10). Decision: an extracted pure `LeakFilter` in the seam — when tools are
-active, text whose accumulated trimmed prefix starts with `{` is withheld; if the turn ends in a
+typed event (spike: 10/10, payload captured verbatim in spike §3). Decision: an extracted pure
+`LeakFilter` in the seam operating at **chunk granularity** (the leak is a chunk-level,
+position-independent phenomenon — it can follow legitimate prose deltas in the same turn): while
+tools are active, from the first chunk whose trimmed text starts with `{`, all subsequent text is
+withheld; prose emitted before that chunk flows normally. If the turn ends in a
 `ToolCallRequested`, withheld text is discarded; if the turn ends without a call, it is flushed
-(fidelity-preserving). Unit-tested with the spike's captured shapes.
+verbatim (fidelity-preserving). Unit-tested with the spike's captured shapes, including the
+prose-then-leak-then-call case.
 
 **Alternatives considered**: regex-scrubbing rendered text in the UI (cosmetic, violates FR-004's
 "structural" requirement); upgrading to 0.16.4 for a cleaner SDK path (rejected — known model-load
@@ -66,11 +70,14 @@ dependency to validate ~6 fields. Strict unknown-key rejection exceeds standard 
 defaults deliberately — a hallucinated argument is a model error the chip should surface, not
 silently drop.
 
-**Bounds as data constants** (the app owns them; the plugin enforces nothing): clipboard input
-cap **4,000 chars** (≈1,000 tokens at the 4-chars/token heuristic — at most ⅔ of the 1,536-token
-context budget is never reachable since truncation is at the *tool* layer before the result
-bound); tool-result JSON cap **2,000 chars** (truncated with a `truncated: true` marker);
-`set_timer` duration bounds **1 s – 24 h**.
+**Bounds as data constants** (the app owns them; the plugin enforces nothing). The result bound
+is **per-tool, declared on `ToolSpec`** (`resultCharBound`): default **2,000 chars** of result
+JSON; `summarize_clipboard` **4,400 chars** (its clipboard text is capped at **4,000 chars** at
+the tool layer, leaving ~400 for the JSON envelope — so the 4,000-char input cap is actually
+reachable). Oversize results truncate with a `truncated: true` marker. Worst-case token cost of
+a tool turn ≈ 1,100 tokens (4,400 chars at the 4-chars/token heuristic) of the 1,536 budget —
+the assembler's oldest-first dropping absorbs it, and only the clipboard tool can reach it.
+`set_timer` duration bounds **1 s – 24 h** (1..86400 s).
 
 ## R4 — Per-tool implementation choices
 
@@ -144,8 +151,9 @@ as files — results are ≤2,000 chars by contract, nowhere near file territory
 
 - **Unit (plugin-free)**: `SchemaValidator` (valid / wrong type / unknown key / enum violation /
   missing required / bounds); `ToolDispatcher` (success, unknownTool, invalidArgs, handler
-  failure, result-bound truncation); `LeakFilter` (spike-captured raw shapes: pure-JSON turn,
-  JSON-then-call, prose-only turn flushes, prefix false-positive `{` prose); `ToolRegistry`
+  failure, per-tool result-bound truncation); `LeakFilter` (spike-captured raw shapes: pure-JSON
+  turn, JSON-then-call, **prose-then-leak-then-call**, prose-only turn flushes, prefix
+  false-positive `{` prose, chunk-split JSON); `ToolRegistry`
   sanity (names unique, schemas validate themselves, descriptions non-empty); context-assembler
   replay (tool turns included, token accounting, oldest-drop).
 - **Seam-contract tests**: extended `FakeGemmaService` models the gates (StateError on ungated
@@ -153,16 +161,17 @@ as files — results are ≤2,000 chars by contract, nowhere near file territory
   logic (ToolSpec→Tool, event mapping, structural coupling) factored to be testable without the
   plugin where possible.
 - **Controller loop**: widget/unit tests over the full matrix — call→dispatch→resume happy path;
-  unknown tool; invalid args; handler failure; second-call skip; stop before dispatch; stop
+  unknown tool; invalid args; handler failure; second-call error chip; stop before dispatch; stop
   before resume; bubble-ordering rule (user → chip → answer); flag-off parity stream.
 - **Migration**: seeded **v3 file DB** (with index, house pattern) → open at v4 → old rows
   intact, new columns NULL, tool insert round-trips.
 - **Widget**: `ToolChip` all four states (running/success/error/skipped) + semantics labels +
   AA-token usage; chat flow rendering role=tool rows; gating regression (no chip surfaces, no
   affordance changes with flag off).
-- **Device (quickstart, `flutter run`/`flutter drive` ONLY)**: V1–V10 covering all four tools,
+- **Device (quickstart, `flutter run`/`flutter drive` ONLY)**: V1–V11 covering all four tools,
   hallucinated-tool probe, invalid-args probe, restart persistence + replay fidelity, airplane
-  mode, responsiveness, accessibility scanner.
+  mode, responsiveness, accessibility scanner, and the capability-off scratch-build regression
+  (V11: prose only, zero declarations, history chips still render).
 
 ## Pinned versions (this feature's additions)
 

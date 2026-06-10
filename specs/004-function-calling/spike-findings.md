@@ -199,6 +199,16 @@ exit 0.
 | Multi-call turns (`ParallelFunctionCallResponse`) | 0 — every call turn was a single call |
 | Extra call on resume (looping) | 0/10 — every round trip terminated in text |
 
+**Captured leak payload (verbatim, trial 1)** — the raw text that streamed through the text
+channel before the typed event; this is the exact shape the 004 replay reconstruction targets:
+
+```json
+{"role":"assistant","tool_calls":[{"type":"function","function":{"name":"get_device_info","arguments":{}}}]}
+```
+
+(with-args variant, trial 2 — note the Gemma escape tokens around the value, stripped by the
+parser before the typed event: `"arguments":{"section":"<|\"|>memory<|\"|>"}`.)
+
 **Latency profile**: call turns reached the typed `FunctionCallResponse` in ~1.8–2.7 s
 (first leaked token ~2.5 s); resumed answers took 1.6–15.4 s depending on length. No-call prose
 answers started in ~0.6 s. Memory: 2749 MB RSS post-load → 2904 MB peak across all 20 trials +

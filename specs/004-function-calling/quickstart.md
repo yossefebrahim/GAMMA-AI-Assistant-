@@ -26,7 +26,7 @@ tool/check_network_seam.sh          # tools add ZERO egress (Principle I)
 flutter run -d 192.168.9.2:45295 --release   # SC timing measurements are --release only
 ```
 
-## Validation script (V1–V10)
+## Validation script (V1–V11)
 
 **V1 — Core loop (US1, SC-001/003/005).** Ask, in separate turns: "what's my battery level?",
 "what device am i running on?", "how much free storage is left?". ✅ Expected: each turn renders
@@ -44,8 +44,10 @@ settings screen → no conflict.
 
 **V4 — set_timer (US4).** "set a timer for 5 minutes". ✅ Expected: NO app switch (skip-UI
 hand-off, spec Q2); chip records `5:00` + success; reply confirms; the system clock app shows the
-running timer (verify in notification shade). Then "set a timer for zero seconds" → error chip
-(out of bounds), honest reply, no timer.
+running timer (verify in notification shade). Then the word-phrased duration (US4/AS2 — the
+story's core claim): "set a timer for a quarter of an hour" → chip records `15:00`, clock app
+holds a 15-minute timer (optionally also "90 seconds" → `1:30`). Then "set a timer for zero
+seconds" → error chip (out of bounds), honest reply, no timer.
 
 **V5 — summarize_clipboard (US5).** Copy a long paragraph in another app, return, "summarize my
 clipboard". ✅ Expected: chip success; summary clearly derived from the copied text; the OS
@@ -81,9 +83,12 @@ labels. Visual: chips are monochrome, mono uppercase tags, hairline borders; red
 the error state.
 
 **V11 — Capability-off regression (SC-007).** Flip `ModelCatalog.supportsFunctionCalling` to
-`false` in a scratch build. Repeat V1 prompts. ✅ Expected: prose answers, zero chips, zero tool
-declarations (verify via plugin debug logs if needed); V2 behavior byte-identical. Old
-conversations' chips still render (FR-010). Restore the flag.
+`false` in a scratch build. Repeat V1 prompts PLUS one image turn and one audio turn (the
+existing 002/003 flows). ✅ Expected: prose answers, zero chips, zero tool declarations (verify
+via plugin debug logs if needed); image/audio behavior unchanged; V2 behavior byte-identical.
+SC-007's suite-level "zero tool calls" claim is satisfied by zero declarations — with no tools
+declared, the model cannot call (spike §1.2); the full 20-prompt suite need not be re-run
+flag-off. Old conversations' chips still render (FR-010). Restore the flag.
 
 ## Reliability gate (SC-001/SC-002 formal measurement)
 

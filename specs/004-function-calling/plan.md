@@ -103,8 +103,9 @@ device; no new network call (Principle I; `check_network_seam.sh` stays green); 
 (II; quickstart verifies all four tools in airplane mode); tools declared to the model ONLY when
 `capabilities.functionCalling` (III) with the seam coupling tools+flag structurally (the spike's
 silent-trap, R1); raw-JSON leak suppressed at the seam — never rendered (FR-004, spike §3);
-ONE tool round trip per user turn (FR-006); tool results bounded (clipboard 4,000 chars, result
-JSON 2,000 chars, R3) so a tool turn can't blow the 1536-token context budget; exactly one model
+ONE tool round trip per user turn (FR-006); tool results bounded per-tool (default 2,000 chars
+of result JSON; clipboard 4,400 carrying its 4,000-char text cap — R3) so a tool turn can't blow
+the 1536-token context budget; exactly one model
 active, no new sessions or models (VIII); monochrome chip with red reserved for error states
 (VI, X); 48dp/AA floors apply to any interactive surface (the v1 chip is non-interactive).
 
@@ -126,7 +127,7 @@ Constitution version **1.2.0**. Status legend: ✅ satisfied by design · ⚠ im
 | II | Offline-First | Every tool executes with zero connectivity; quickstart V8 verifies all four plus a round trip under airplane mode. | ✅ |
 | III | Capability-Driven UX | Tool declaration to the model is driven by `ModelCapabilities.functionCalling` (catalog→seam→provider data, never a per-model `if`); flag-off is byte-for-byte today's behavior (SC-007 regression pass); persisted chips render regardless of current capability (the 002/003 history-outlives-capability rule). | ✅ (realizes III for tools) |
 | IV | Responsive & Cancellable | Streaming + stop reuse the existing path; handlers are fast local calls run off the hot path; the round trip stays inside the streamed turn with stop honored before dispatch and before resume (FR-026); leak suppression is O(token) buffering, no per-token regression. | ⚠ verify gesture responsiveness during a tool turn on device — quickstart V9 |
-| V | Graceful Degradation | Unknown tool, invalid args, handler failure, missing clock app, empty/non-text clipboard, stop-mid-turn, and second-call-skipped all have typed outcomes that terminate in a visible chip state + honest model-informed text (FR-022..026); nothing can crash the turn. | ⚠ implement the full outcome matrix; contracts pin it |
+| V | Graceful Degradation | Unknown tool, invalid args, handler failure, missing clock app, empty/non-text clipboard, stop-mid-turn, and the second-call error all have typed outcomes that terminate in a visible chip state + honest model-informed text (FR-022..026); nothing can crash the turn. | ⚠ implement the full outcome matrix; contracts pin it |
 | VI | Dark-First & Accessible | Chip text uses AA-passing tokens (`textSecondary` floor — chips are essential content); the v1 chip is non-interactive so no new touch-target surface; error states use the sanctioned red. | ⚠ device Accessibility Scanner pass over chip states — quickstart V10 |
 | VII | Testable Through a Plugin Seam | flutter_gemma stays in `infrastructure/gemma/`; `battery_plus`/`android_intent_plus` confined to `infrastructure/tools/` behind services with fakes; the registry, dispatcher, validator, controller loop, and chip all test plugin-free; seam-guard script extended. | ✅ |
 | VIII | Resource Hygiene | No new sessions/models/files; tool turns ride the existing chat session; result strings bounded; the StatFs channel is a synchronous read; intent fires and releases. | ✅ |
@@ -147,7 +148,7 @@ specs/004-function-calling/
 ├── plan.md              # This file
 ├── research.md          # Phase 0 output (R1–R8, pinned decisions)
 ├── data-model.md        # Phase 1 output (entities, v3→v4 migration, state machine)
-├── quickstart.md        # Phase 1 output (device validation script V1–V10)
+├── quickstart.md        # Phase 1 output (device validation script V1–V11)
 ├── contracts/           # Phase 1 output (seam + registry + repo contracts)
 │   ├── gemma_service.md
 │   ├── tool_registry_dispatcher.md
@@ -163,7 +164,8 @@ lib/
 ├── core/
 │   ├── model_catalog.dart                  # + supportsFunctionCalling → capabilities
 │   └── tools/
-│       ├── tool_registry.dart              # NEW — const four-ToolSpec registry (data only)
+│       ├── tool_registry.dart              # NEW — const four-ToolSpec registry (data only) +
+│       │                                   #   the ~40-token tool-use system instruction const (R6)
 │       └── schema_validator.dart           # NEW — in-house JSON-schema-subset validator (pure)
 ├── domain/
 │   ├── entities/
@@ -172,13 +174,16 @@ lib/
 │   │   ├── tool_outcome.dart               # NEW — success | unknownTool | invalidArgs | failure
 │   │   ├── message.dart                    # + MessageRole.tool, tool fields
 │   │   └── model_capabilities.dart         # (exists — functionCalling flag already present)
+│   ├── repositories/
+│   │   └── conversation_repository.dart    # CHANGED — appendToolInvocation/finalizeToolInvocation
 │   └── services/
 │       ├── gemma_service.dart              # CHANGED — Stream<GenerationEvent>, resumeWithToolResult,
 │       │                                   #   tools param + StateError gates (contract)
 │       └── tool_dispatcher.dart            # NEW — validate → handler → ToolOutcome (plugin-free)
 ├── infrastructure/
 │   ├── gemma/flutter_gemma_service.dart    # CHANGED — tools/flag/systemInstruction threading,
-│   │                                       #   event mapping, LeakFilter, resume loop
+│   │                                       #   event mapping, LeakFilter, resume loop, tool-turn
+│   │                                       #   REPLAY reconstruction (data-model §3)
 │   ├── gemma/leak_filter.dart              # NEW — pure, unit-testable raw-JSON suppression
 │   └── tools/
 │       ├── device_info_tool_service.dart   # NEW — device_info_plus + battery_plus + StatFs channel
@@ -187,7 +192,8 @@ lib/
 ├── data/
 │   ├── db/app_database.dart                # CHANGED — schemaVersion 4, v3→v4 migration
 │   ├── db/tables.dart                      # CHANGED — tool columns on messages
-│   └── repositories/drift_conversation_repository.dart  # CHANGED — tool rows, replay mapping
+│   └── repositories/drift_conversation_repository.dart  # CHANGED — tool rows (replay
+│                                           #   reconstruction itself lives in the seam)
 ├── features/chat/
 │   ├── chat_controller.dart                # CHANGED — event loop, dispatch, ordering rule, stop
 │   ├── context_assembler.dart              # CHANGED — tool turns in replay, token accounting

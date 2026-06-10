@@ -249,11 +249,12 @@ each.
 ### Edge Cases
 
 - **Model requests a second tool call after receiving the first result** (one round trip per
-  turn is the contract): the follow-up call is not executed; it is surfaced as an error chip
-  ("only one tool call per turn") and generation finishes as text. The spike observed 0/10
+  turn is the contract): the follow-up call is not executed; it is surfaced as its own error
+  chip ("only one tool call per turn") and generation finishes as text. The spike observed 0/10
   extra calls, so this is rare-path hardening.
 - **Model emits multiple parallel calls in a single response**: only the first is honored; the
-  rest are recorded in one error chip. (Spike observed 0/20 parallel turns.)
+  extras are noted on the executed call's chip ("+n parallel calls not executed"). (Spike
+  observed 0/20 parallel turns.)
 - **The two prompts in twelve where the model should call but answers in prose** (spike: misses
   are conservative): acceptable behavior — the reply is still a normal answer; nothing to
   surface. Reliability target lives in Success Criteria, not per-turn UI.
@@ -368,8 +369,10 @@ each.
   the turn in text.
 - **FR-023**: Arguments failing schema validation MUST prevent execution and produce a visible
   error chip with the validation reason; the model is informed and completes in text.
-- **FR-024**: Extra calls beyond the one-per-turn contract (FR-006) MUST be recorded in an error
-  chip and skipped.
+- **FR-024**: Extra calls beyond the one-per-turn contract (FR-006) MUST NOT execute and MUST be
+  visibly recorded: a second call attempted after the round trip appears as its own error chip
+  ("only one tool call per turn"); parallel extras within a single response are noted on the
+  executed call's chip ("+n parallel calls not executed").
 - **FR-025**: A tool that fails during execution MUST return a structured error that renders in
   the chip and informs the model — the assistant's reply MUST be able to acknowledge the failure
   honestly (never fabricated success).

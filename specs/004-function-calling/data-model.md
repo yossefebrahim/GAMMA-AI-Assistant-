@@ -10,6 +10,7 @@
 | `description` | `String` | non-empty; the model's when-to-use guidance (includes constraints the model should explain, e.g. clipboard foregrounding) |
 | `parameters` | `Map<String, Object?>` | JSON-schema object (the subset in research R3); `const`-able |
 | `kind` | `ToolKind` enum: `readOnly` \| `stateChanging` | drives nothing in v1 (all auto-execute, spec Q1) but is REQUIRED data so a future confirmation policy is a data change (FR-016) |
+| `resultCharBound` | `int` | per-tool result-JSON cap (R3): default 2,000; `summarize_clipboard` 4,400 (4,000 chars of clipboard text + envelope) |
 
 ### ToolRegistry (new, const data — `lib/core/tools/tool_registry.dart`)
 
@@ -40,7 +41,7 @@
 | `toolName` | NEW `String?` — non-null iff role == tool |
 | `toolArgs` | NEW `Map<String, Object?>?` — the model's arguments as validated/attempted |
 | `toolStatus` | NEW `ToolCallStatus?` enum: `running` \| `success` \| `error` \| `skipped` |
-| `toolResult` | NEW `Map<String, Object?>?` — result on success, `{error: reason}` otherwise; ≤2,000 chars JSON (R3 bound) |
+| `toolResult` | NEW `Map<String, Object?>?` — result on success, `{error: reason}` otherwise; ≤ the tool's `resultCharBound` (R3: default 2,000, clipboard 4,400; absolute ceiling 4,400) |
 | `content` | for tool rows: the chip's quiet one-line summary (lowercase microcopy, e.g. `battery 83% · 7.4 gb ram`) — display text only, never fed to the model |
 
 Invariant (repo-enforced, mirrors the 003 XOR pattern): tool fields are all-null for
@@ -62,7 +63,7 @@ composed exactly like `supportsImage`/`supportsAudio`.
 ALTER TABLE messages ADD COLUMN tool_name TEXT NULL;
 ALTER TABLE messages ADD COLUMN tool_args TEXT NULL;     -- JSON
 ALTER TABLE messages ADD COLUMN tool_status TEXT NULL;   -- running|success|error|skipped
-ALTER TABLE messages ADD COLUMN tool_result TEXT NULL;   -- JSON, ≤2000 chars (app-enforced)
+ALTER TABLE messages ADD COLUMN tool_result TEXT NULL;   -- JSON, ≤ per-tool bound, ceiling 4400 (app-enforced)
 ```
 
 - v3 rows untouched (all four columns NULL); fresh installs get v4 via onCreate.
@@ -84,8 +85,9 @@ One row per invocation. The seam expands each tool row into the plugin's two rep
 | `toolName` + `toolArgs` | `Message.toolCall(text: '{"role":"assistant","tool_calls":[{"type":"function","function":{"name":<toolName>,"arguments":<toolArgs>}}]}')` — the raw SDK shape observed verbatim in the spike |
 | `toolStatus` + `toolResult` | `Message.toolResponse(toolName: <toolName>, response: <toolResult>)` — errors replay too (`{error: …}`), so the model remembers failures honestly |
 
-`skipped` rows (stop before dispatch, or extra-call discards) replay the call with
-`{error: 'skipped'}` — context fidelity over prettiness. **Replay fidelity is device-verified in
+`skipped` rows (stop before dispatch — the ONLY skipped case) replay the call with
+`{error: 'skipped'}`; a second-call-after-resume row is an `error` row ("only one tool call per
+turn") and replays `{error: …}` like any error — context fidelity over prettiness. **Replay fidelity is device-verified in
 quickstart V6** (the reconstructed raw-JSON shape is the one unverified-by-unit-test seam input).
 
 `ContextAssembler` treats a tool row as one turn for token accounting (name + args + result JSON
@@ -108,21 +110,23 @@ send(text)
             ├─ dispatch handler:                                                │
             │     success → finalize: success(result)                           │
             │     failure → finalize: error(reason)                             │
-            ├─ extraCallCount > 0 → record in the SAME chip (… +n calls skipped)│
+            ├─ extraCallCount > 0 → noted on the SAME chip (… +n parallel calls not executed) │
             ├─ stop requested now?           → END turn (no resume)            ─┤
             └─ open NEW streaming assistant row                                ←┘
                  └─ gemma.resumeWithToolResult(name, result-or-error)
                       ├─ TextDelta* → stream into the new assistant row → finalize complete/stoppedPartial
-                      └─ ToolCallRequested (2nd) → finalize tool row #2 as skipped-with-error chip
+                      └─ ToolCallRequested (2nd) → persist tool row #2 directly as
+                                                   error('only one tool call per turn')
                                                    (FR-006/FR-024), turn ends as text
 ```
 
 - **Terminal-state guarantee** (spec edge case): `running` is transient. A startup sweep
   finalizes any stale `running` tool row to `error('interrupted')` — mirroring the existing
   stale-`streaming` message finalization.
-- **Stop semantics (FR-026)**: stop before dispatch → `skipped`, nothing executed; stop after
-  dispatch → the (fast, local) handler completes, the row finalizes truthfully, but no resume —
-  the turn ends; never a half-recorded execution.
+- **Stop semantics (FR-026)**: stop before dispatch → `skipped` (`skipped` is reserved for
+  exactly this case), nothing executed; stop after dispatch → the (fast, local) handler
+  completes, the row finalizes truthfully, but no resume — the turn ends; never a half-recorded
+  execution.
 - **Errors inform the model**: error outcomes still resume generation (with `{error: …}` as the
   tool result) so the assistant's text acknowledges the failure (FR-022/023/025) — EXCEPT when
   stop ended the turn.

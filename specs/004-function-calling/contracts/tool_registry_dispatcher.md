@@ -59,8 +59,9 @@ Guarantees:
    never consulted); schema failure → `ToolInvalidArgs(reason)` (handler never invoked).
 2. **Typed outcomes only**: handler exceptions are caught and mapped to `ToolFailure(reason)` —
    `dispatch` NEVER throws (the controller's state machine consumes outcomes, not exceptions).
-3. **Result bound**: success payloads exceeding 2,000 chars of JSON are truncated with
-   `truncated: true` (R3) before they reach the seam or the DB.
+3. **Result bound (per-tool)**: success payloads exceeding the spec's `resultCharBound`
+   (default 2,000 chars of JSON; `summarize_clipboard` 4,400 — R3) are truncated with
+   `truncated: true` before they reach the seam or the DB. Absolute ceiling 4,400.
 4. **No policy**: the dispatcher executes valid calls unconditionally — confirmation policy
    (none in v1, spec Q1) and the one-call-per-turn rule are controller concerns; capability
    gating is a seam concern. The dispatcher stays a pure mapping.
@@ -72,7 +73,7 @@ Guarantees:
 | Service | Wraps | Failure → `ToolFailure` reason |
 |---|---|---|
 | `DeviceInfoToolService` | `device_info_plus` + `battery_plus` + StatFs `MethodChannel` (R4) | individual probe failures degrade per-field (`unknown`), service never throws |
-| `ClipboardToolService` | Flutter `Clipboard.getData` | `clipboard empty or not text`; 4,000-char bound with `truncated: true` |
+| `ClipboardToolService` | Flutter `Clipboard.getData` | `clipboard empty or not text`; clipboard text capped at 4,000 chars with `truncated: true` (fits the tool's 4,400 `resultCharBound`) |
 | `TimerIntentService` | `android_intent_plus` ACTION_SET_TIMER + EXTRA_SKIP_UI (R4) | `no clock app available` (ActivityNotFoundException); bounds enforced by schema before the handler |
 | theme handler | existing persisted theme controller | none expected; same-theme → success with `alreadyActive: true` |
 
