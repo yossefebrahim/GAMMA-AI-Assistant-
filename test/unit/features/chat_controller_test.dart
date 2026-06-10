@@ -52,13 +52,29 @@ void main() {
     gemma.deltaInterval = const Duration(milliseconds: 25);
 
     final sending = controller().send('hi'); // not awaited — stop mid-stream
-    await Future<void>.delayed(const Duration(milliseconds: 40));
+    
+    // Wait until generation starts and the first delta is flushed to the database
+    int? conversationId;
+    while (true) {
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      conversationId = read().conversationId;
+      if (conversationId != null) {
+        final turns = await repo().loadTurns(conversationId);
+        final assistant = turns.cast<Message?>().firstWhere(
+          (m) => m?.role == MessageRole.assistant,
+          orElse: () => null,
+        );
+        if (assistant != null && assistant.content.isNotEmpty) {
+          break;
+        }
+      }
+    }
+
     await controller().stop();
     await sending;
 
-    final conversationId = read().conversationId!;
     final assistant =
-        (await repo().loadTurns(conversationId)).firstWhere((m) => m.role == MessageRole.assistant);
+        (await repo().loadTurns(conversationId!)).firstWhere((m) => m.role == MessageRole.assistant);
     expect(assistant.status, MessageStatus.stoppedPartial);
     expect(assistant.content, isNotEmpty);
     expect(assistant.content.length, lessThan('aabbccddee'.length));
@@ -75,7 +91,24 @@ void main() {
       ..trailingDeltaAfterStop = 'LAST';
 
     final sending = controller().send('hi');
-    await Future<void>.delayed(const Duration(milliseconds: 40));
+    
+    // Wait until generation starts and the first delta is flushed to the database
+    int? conversationId;
+    while (true) {
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      conversationId = read().conversationId;
+      if (conversationId != null) {
+        final turns = await repo().loadTurns(conversationId);
+        final assistant = turns.cast<Message?>().firstWhere(
+          (m) => m?.role == MessageRole.assistant,
+          orElse: () => null,
+        );
+        if (assistant != null && assistant.content.isNotEmpty) {
+          break;
+        }
+      }
+    }
+
     await controller().stop();
     await sending;
 
