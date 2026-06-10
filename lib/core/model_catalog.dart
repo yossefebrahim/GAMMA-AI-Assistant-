@@ -15,9 +15,15 @@ abstract final class ModelCatalog {
   /// `GemmaService.capabilities` → `modelCapabilitiesProvider`, which the composer gates on.
   static const bool supportsImage = true;
 
+  /// Whether the default model understands audio — DATA, same flow as [supportsImage] (Principle
+  /// III, 003). Verified empirically for Gemma 4 E2B by the 003 Phase 0 spike (word-perfect
+  /// grounding on the A34, GPU backend — specs/003-audio-input/spike-findings.md).
+  static const bool supportsAudio = true;
+
   /// The active model's capabilities as a single data value (Principle III). Passed into
   /// `GemmaService.loadModel` so the seam enables the matching modalities and reports them back.
-  static const ModelCapabilities capabilities = ModelCapabilities(image: supportsImage);
+  static const ModelCapabilities capabilities =
+      ModelCapabilities(image: supportsImage, audio: supportsAudio);
 
   /// Human label, shown lowercased per the design voice: `model ( gemma 4 e2b )`.
   static const String displayName = 'gemma 4 e2b';

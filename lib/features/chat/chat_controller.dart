@@ -1,12 +1,21 @@
+import 'dart:io';
+
+import 'package:ai_assistant/core/audio_constants.dart';
+import 'package:ai_assistant/core/media_file_extension.dart';
+import 'package:ai_assistant/data/audio/audio_file_store.dart';
 import 'package:ai_assistant/data/images/image_file_store.dart';
 import 'package:ai_assistant/data/repositories/drift_conversation_repository.dart';
+import 'package:ai_assistant/domain/entities/audio_attachment.dart';
+import 'package:ai_assistant/domain/entities/audio_input.dart';
 import 'package:ai_assistant/domain/entities/chat_turn.dart';
 import 'package:ai_assistant/domain/entities/image_attachment.dart';
 import 'package:ai_assistant/domain/entities/image_input.dart';
 import 'package:ai_assistant/domain/entities/message.dart';
+import 'package:ai_assistant/domain/entities/pending_recording.dart';
 import 'package:ai_assistant/domain/services/gemma_service.dart';
 import 'package:ai_assistant/features/chat/attachment_controller.dart';
 import 'package:ai_assistant/features/chat/context_assembler.dart';
+import 'package:ai_assistant/features/chat/recording_controller.dart';
 import 'package:ai_assistant/infrastructure/gemma/flutter_gemma_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -19,7 +28,7 @@ class ChatState {
   final bool isGenerating;
 
   /// A clear, dismissible message surfaced on honest failure (e.g. an unprocessable image —
-  /// FR-020). Null when there is nothing to show.
+  /// FR-020 — or clip, 003 FR-022). Null when there is nothing to show.
   final String? errorMessage;
 
   ChatState copyWith({
@@ -47,38 +56,73 @@ class ChatController extends Notifier<ChatState> {
   static const String imageErrorMessage =
       "couldn't process this image — try another, or send without it";
 
+  /// Shown when the active model/device cannot process the sent clip (003 FR-022, research R7.3).
+  static const String audioErrorMessage =
+      "couldn't process this audio — try a shorter clip, or send without it";
+
   @override
   ChatState build() => const ChatState();
 
-  /// Point the chat at an existing conversation (US4) or null for a fresh thread.
+  /// Point the chat at an existing conversation (US4) or null for a fresh thread. A pending voice
+  /// clip belongs to the compose it was recorded in — it is cleared on the switch (003 spec Q3,
+  /// data-model §4: conversation switch → idle, temp file deleted).
   void openConversation(int? conversationId) {
+    ref.read(recordingControllerProvider.notifier).reset();
     state = ChatState(conversationId: conversationId);
   }
 
-  /// Send a turn (FR-012). [text] may be empty when an [image] is attached (FR-004). When an image
-  /// is present it is copied into app-private storage, persisted on the user message, and its bytes
-  /// are read just-in-time and handed to `generate` (Principle VIII — not retained after the call).
-  Future<void> send(String text, {PendingAttachment? image}) async {
+  /// Send a turn (FR-012). [text] may be empty when an [image] or [audio] clip is attached
+  /// (FR-004); at most one of the two is given (audio XOR image, 003 spec Q3 — enforced upstream
+  /// by the controllers). Attachment bytes are copied into app-private storage at send, persisted
+  /// on the user message, and read just-in-time for `generate` (Principle VIII — not retained
+  /// after the call).
+  Future<void> send(String text, {PendingAttachment? image, PendingRecording? audio}) async {
     if (state.isGenerating) return; // single in-flight (Q4)
     final trimmed = text.trim();
-    if (trimmed.isEmpty && image == null) return; // nothing to send (FR-004)
+    if (trimmed.isEmpty && image == null && audio == null) return; // nothing to send (FR-004)
 
     final repo = ref.read(conversationRepositoryProvider);
     final imageStore = ref.read(imageFileStoreProvider);
+    final audioStore = ref.read(audioFileStoreProvider);
 
-    // Persist the image bytes as an app-private file FIRST, and read the bytes just-in-time for this
-    // prompt (FR-012, R5). An oversized/unreadable image is rejected here (FR-021) before anything
-    // is created — surface "pick another" and abort the send.
-    ImageAttachment? attachment;
+    // Persist the attachment bytes as an app-private file FIRST, and read the bytes just-in-time
+    // for this prompt (FR-012, R5/R6). An oversized/unreadable file is rejected here, BEFORE any
+    // row is created (002 DF-2: FileSystemException is caught alongside ArgumentError) — surface
+    // "pick another" / "record again" and abort the send.
+    ImageAttachment? imageAttachment;
     ImageInput? imageInput;
     if (image != null) {
       try {
-        final storedPath =
-            await imageStore.persist(image.path, extension: _extensionOf(image.path));
-        attachment = ImageAttachment(path: storedPath, mimeType: image.mimeType);
-        imageInput = ImageInput(await imageStore.readBytes(storedPath), mimeType: image.mimeType);
+        final storedPath = await imageStore.persist(
+          image.path,
+          extension: mediaFileExtension(
+              mimeType: image.mimeType, path: image.path, fallback: '.jpg'),
+        );
+        imageAttachment = ImageAttachment(path: storedPath, mimeType: image.mimeType);
+        imageInput =
+            ImageInput(await imageStore.readBytes(storedPath), mimeType: image.mimeType);
       } on ArgumentError {
         ref.read(attachmentControllerProvider.notifier).rejectPending();
+        return;
+      } on FileSystemException {
+        ref.read(attachmentControllerProvider.notifier).rejectPending();
+        return;
+      }
+    }
+    AudioAttachment? audioAttachment;
+    AudioInput? audioInput;
+    if (audio != null) {
+      final mimeType = audio.mimeType ?? AudioConstants.wavMimeType;
+      try {
+        final storedPath = await audioStore.persist(audio.path, mimeType: mimeType);
+        audioAttachment = AudioAttachment(path: storedPath, mimeType: mimeType);
+        audioInput =
+            AudioInput(await audioStore.readBytes(storedPath), mimeType: mimeType);
+      } on ArgumentError {
+        await ref.read(recordingControllerProvider.notifier).rejectPending();
+        return;
+      } on FileSystemException {
+        await ref.read(recordingControllerProvider.notifier).rejectPending();
         return;
       }
     }
@@ -86,13 +130,14 @@ class ChatController extends Notifier<ChatState> {
     var conversationId = state.conversationId;
     conversationId ??= (await repo.createConversation()).id;
 
-    await repo.appendUserMessage(conversationId, trimmed, image: attachment);
+    await repo.appendUserMessage(conversationId, trimmed,
+        image: imageAttachment, audio: audioAttachment);
 
     // Assemble the sliding-window context (FR-017, Q2). Exclude the user turn just appended — it is
     // passed separately as the prompt — and let the assembler trim oldest turns to the token budget.
     final turns = await repo.loadTurns(conversationId);
     final priorMessages = turns.take(turns.length - 1).toList();
-    final history = await _assembleHistory(priorMessages, imageStore);
+    final history = await _assembleHistory(priorMessages, imageStore, audioStore);
 
     final assistantId = await repo.beginAssistantMessage(conversationId);
     _stopRequested = false;
@@ -100,6 +145,9 @@ class ChatController extends Notifier<ChatState> {
     state = state.copyWith(conversationId: conversationId, isGenerating: true, clearError: true);
     // The send succeeded in starting — drop the pending attachment from the composer (FR-004).
     if (image != null) ref.read(attachmentControllerProvider.notifier).clear();
+    if (audio != null) {
+      await ref.read(recordingControllerProvider.notifier).clearAfterSend();
+    }
 
     final gemma = ref.read(gemmaServiceProvider);
     final buffer = StringBuffer();
@@ -119,8 +167,8 @@ class ChatController extends Notifier<ChatState> {
     }
 
     try {
-      await for (final delta
-          in gemma.generate(history: history, prompt: trimmed, image: imageInput)) {
+      await for (final delta in gemma.generate(
+          history: history, prompt: trimmed, image: imageInput, audio: audioInput)) {
         buffer.write(delta);
         if (persistedLength == 0 || flushClock.elapsed >= _flushInterval) {
           flushClock.reset();
@@ -141,6 +189,14 @@ class ChatController extends Notifier<ChatState> {
       await flush();
       await repo.finalizeAssistantMessage(assistantId, MessageStatus.stoppedPartial);
       state = state.copyWith(errorMessage: imageErrorMessage);
+    } on AudioProcessingException {
+      // The audio edition of the same honest-failure rule (003 FR-022, US6): the turn finalizes
+      // as stoppedPartial and the dismissible banner offers a way forward. The seam raises this
+      // ONLY for the current prompt's clip (guarantee 15), so an audio-free follow-up can never
+      // land here.
+      await flush();
+      await repo.finalizeAssistantMessage(assistantId, MessageStatus.stoppedPartial);
+      state = state.copyWith(errorMessage: audioErrorMessage);
     } catch (_) {
       // Other mid-stream failures: keep whatever text arrived as a stopped-partial turn.
       await flush();
@@ -157,31 +213,33 @@ class ChatController extends Notifier<ChatState> {
   /// Dismiss the current error message (FR-020) — the conversation stays usable.
   void dismissError() => state = state.copyWith(clearError: true);
 
-  /// Assemble the sliding-window context (FR-017). Image-bearing history turns get their bytes read
-  /// just-in-time so follow-ups keep referring to the earlier image (FR-015/FR-016); the bytes live
-  /// only in the local map handed to the assembler and are released after `generate` returns — they
-  /// are not retained between turns (Principle VIII).
+  /// Assemble the sliding-window context (FR-017). Media-bearing history turns get their bytes
+  /// read just-in-time so follow-ups keep referring to the earlier image/clip (FR-015/FR-016;
+  /// 003 FR-016/FR-017); the bytes live only in the local maps handed to the assembler and are
+  /// released after `generate` returns — they are not retained between turns (Principle VIII).
+  /// The assembler itself stays pure (no file I/O) — bytes are injected via the id-keyed maps.
   Future<List<ChatTurn>> _assembleHistory(
     List<Message> priorMessages,
     ImageFileStore imageStore,
+    AudioFileStore audioStore,
   ) async {
     final images = <int, ImageInput>{};
+    final audio = <int, AudioInput>{};
     for (final message in priorMessages) {
-      final image = message.image;
-      if (image != null) {
-        images[message.id] =
-            ImageInput(await imageStore.readBytes(image.path), mimeType: image.mimeType);
+      final messageImage = message.image;
+      if (messageImage != null) {
+        images[message.id] = ImageInput(await imageStore.readBytes(messageImage.path),
+            mimeType: messageImage.mimeType);
+      }
+      final messageAudio = message.audio;
+      if (messageAudio != null) {
+        audio[message.id] = AudioInput(await audioStore.readBytes(messageAudio.path),
+            mimeType: messageAudio.mimeType);
       }
     }
-    return ref.read(contextAssemblerProvider).assemble(priorMessages, images: images);
-  }
-
-  /// The dotted extension of a picker temp path, defaulting to `.jpg`.
-  String _extensionOf(String path) {
-    final dot = path.lastIndexOf('.');
-    final slash = path.lastIndexOf('/');
-    if (dot > slash && dot != -1 && dot < path.length - 1) return path.substring(dot);
-    return '.jpg';
+    return ref
+        .read(contextAssemblerProvider)
+        .assemble(priorMessages, images: images, audio: audio);
   }
 
   /// Halt the in-flight reply within ~1s (FR-014); the partial text is retained by [send]'s

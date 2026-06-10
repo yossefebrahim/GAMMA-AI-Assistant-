@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:ai_assistant/core/media_file_extension.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -53,7 +54,8 @@ class ImageFileStore {
       );
     }
     final dir = await _imagesDir();
-    final ext = extension ?? _extensionOf(tempPath);
+    // Extension policy lives in the ONE shared helper (002 audit L5, adopted by 003).
+    final ext = extension ?? mediaFileExtension(path: tempPath, fallback: '.jpg');
     final name = '${DateTime.now().microsecondsSinceEpoch}_${_counter++}$ext';
     final dest = '${dir.path}/$name';
     await source.copy(dest);
@@ -75,15 +77,6 @@ class ImageFileStore {
     }
   }
 
-  /// The dotted extension of [path] (e.g. `.jpg`), defaulting to `.jpg` when none is present.
-  String _extensionOf(String path) {
-    final dot = path.lastIndexOf('.');
-    final slash = path.lastIndexOf('/');
-    if (dot > slash && dot != -1 && dot < path.length - 1) {
-      return path.substring(dot);
-    }
-    return '.jpg';
-  }
 }
 
 /// App-wide [ImageFileStore]. Overridable in tests with a temp-dir-backed store.

@@ -174,8 +174,8 @@ mimeType via one shared helper used by both store and controller (L5). One attac
 
 | Package | Version | Role | Confinement |
 |---|---|---|---|
-| `record` | `^7.0.0` | WAV/16k/mono/PCM16 capture + amplitude stream | `lib/infrastructure/media/` behind `AudioRecorderService` |
-| `audioplayers` | `^6.7.0` | composer-preview playback only (Q2) | `lib/infrastructure/media/` behind `AudioPreviewPlayer` |
+| `record` | `^7.0.0` (resolved **7.0.0**, 2026-06-10) | WAV/16k/mono/PCM16 capture + amplitude stream | `lib/infrastructure/media/` behind `AudioRecorderService` |
+| `audioplayers` | `^6.7.0` (resolved **6.7.1**, 2026-06-10) | composer-preview playback only (Q2) | `lib/infrastructure/media/` behind `AudioPreviewPlayer` |
 | `permission_handler` | `^12.0.0` (already pinned) | `Permission.microphone` | existing `lib/infrastructure/media/` |
 | `flutter_gemma` | `^0.15.0` (already pinned, 0.15.3 installed) | audio inference | existing `lib/infrastructure/gemma/` |
 

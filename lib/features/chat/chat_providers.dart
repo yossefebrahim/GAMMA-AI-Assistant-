@@ -1,8 +1,12 @@
 import 'package:ai_assistant/core/model_catalog.dart';
 import 'package:ai_assistant/data/model/background_model_downloader.dart';
 import 'package:ai_assistant/domain/entities/model_capabilities.dart';
+import 'package:ai_assistant/domain/services/audio_preview_player.dart';
+import 'package:ai_assistant/domain/services/audio_recorder_service.dart';
 import 'package:ai_assistant/domain/services/gemma_service.dart';
 import 'package:ai_assistant/infrastructure/gemma/flutter_gemma_service.dart';
+import 'package:ai_assistant/infrastructure/media/audioplayers_preview_player.dart';
+import 'package:ai_assistant/infrastructure/media/record_audio_recorder_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Thrown when chat is opened but no installed model exists on disk.
@@ -50,6 +54,22 @@ final modelCapabilitiesProvider = Provider<ModelCapabilities>((ref) {
     data: (gemma) => gemma.isLoaded ? gemma.capabilities : ModelCapabilities.textOnly,
     orElse: () => ModelCapabilities.textOnly,
   );
+});
+
+/// App-wide [AudioRecorderService] (003 R2) — the capture seam, overridable in tests with
+/// `FakeAudioRecorderService`. The platform recorder is released with the provider.
+final audioRecorderServiceProvider = Provider<AudioRecorderService>((ref) {
+  final service = RecordAudioRecorderService();
+  ref.onDispose(service.dispose);
+  return service;
+});
+
+/// App-wide [AudioPreviewPlayer] (003 R4, composer preview only — spec Q2) — overridable in tests
+/// with `FakeAudioPreviewPlayer`. The platform player is released with the provider.
+final audioPreviewPlayerProvider = Provider<AudioPreviewPlayer>((ref) {
+  final player = AudioplayersPreviewPlayer();
+  ref.onDispose(player.dispose);
+  return player;
 });
 
 /// Whether the model session is actually LOADED (data state), as opposed to loading or failed.

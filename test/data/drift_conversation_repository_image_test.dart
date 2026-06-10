@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:ai_assistant/data/audio/audio_file_store.dart';
 import 'package:ai_assistant/data/db/app_database.dart';
 import 'package:ai_assistant/data/images/image_file_store.dart';
 import 'package:ai_assistant/data/repositories/drift_conversation_repository.dart';
@@ -24,7 +25,11 @@ void main() {
     db = newTestDatabase();
     imagesDir = Directory.systemTemp.createTempSync('repo_img_docs_');
     store = ImageFileStore(documentsDirectory: () async => imagesDir);
-    repo = DriftConversationRepository(db, store);
+    repo = DriftConversationRepository(
+      db,
+      store,
+      AudioFileStore(documentsDirectory: () async => imagesDir),
+    );
     pickerTemp = File('${imagesDir.path}/picked.jpg')..writeAsBytesSync([1, 2, 3, 4]);
   });
 

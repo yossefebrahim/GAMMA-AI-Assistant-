@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:ai_assistant/data/audio/audio_file_store.dart';
 import 'package:ai_assistant/data/db/app_database.dart';
 import 'package:ai_assistant/data/images/image_file_store.dart';
 import 'package:ai_assistant/data/repositories/drift_conversation_repository.dart';
@@ -22,6 +23,7 @@ void main() {
     repo = DriftConversationRepository(
       db,
       ImageFileStore(documentsDirectory: () async => tempDir),
+      AudioFileStore(documentsDirectory: () async => tempDir),
     );
   });
 

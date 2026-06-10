@@ -252,3 +252,29 @@ three ⚠ items now have concrete designs and device-verification steps; no new 
 | X Design Identity | red precisely on the live recording/stop states; dot-matrix pulse; monochrome chip — spec FR-029, composer/chip design |
 
 Gate clear → ready for `/speckit-tasks`. Complexity Tracking remains empty.
+
+## Post-Implementation Constitution Re-Check (as-built, 2026-06-10)
+
+Re-evaluated against the implemented code after /speckit-implement (T054). **Static result: PASS**
+— `flutter analyze` clean, 152 tests green, `check_plugin_seam.sh` (now covering
+record/audioplayers) and `check_network_seam.sh` green, debug APK builds, merged manifest carries
+exactly `RECORD_AUDIO`. Q1–Q3 provisional decisions are unchanged (30 s cap / composer-preview
+playback only / one attachment per message), so `checklists/requirements.md` needs no edits.
+
+The three ⚠ items as-built:
+
+- **IV — Responsive & Cancellable**: stop/cancel + the M1 delta-before-stop invariant are
+  regression-tested; capture/playback run natively off-isolate; the cap timer bounds encode cost.
+  **⚠ remains until quickstart V9 (100 ms gestures, SC-010) is recorded on the A34.**
+- **V — Graceful Degradation: ✅.** The full failure matrix is implemented AND unit/widget-tested:
+  `RecorderUnavailableException` → inline error; backgrounding mid-recording → stop-and-keep
+  (≥ min) / discard + note; persist `ArgumentError`/`FileSystemException` → "record again", no
+  message row; `AudioProcessingException` (current-prompt-only, L4-locked) → stoppedPartial +
+  dismissible banner; capability flips fire only for a genuinely loaded model (ready-guard
+  tested).
+- **VI — Dark-First & Accessible**: ≥48dp stop target and screen-reader announcements implemented
+  and widget-asserted; chip/notes monochrome with `textSecondary`. **⚠ remains until quickstart
+  V10 (Accessibility Scanner + TalkBack, SC-011) is recorded on the device.**
+
+Remaining release gates are the on-device passes (T033, T039, T042, T045, T048, T051–T053 —
+quickstart V2–V10), run with `flutter run`/`flutter drive` only.

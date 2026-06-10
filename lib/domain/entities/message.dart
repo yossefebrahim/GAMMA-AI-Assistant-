@@ -1,3 +1,4 @@
+import 'package:ai_assistant/domain/entities/audio_attachment.dart';
 import 'package:ai_assistant/domain/entities/image_attachment.dart';
 import 'package:meta/meta.dart';
 
@@ -18,6 +19,10 @@ enum MessageStatus {
 }
 
 /// One turn within a conversation (FR-012…FR-014, FR-017). Persisted in the `messages` table.
+///
+/// A user turn carries at most ONE attachment: `image == null || audio == null` (spec 003 Q3 —
+/// audio XOR image), enforced upstream by the attachment controller and validated by
+/// `appendUserMessage`. Assistant turns never carry media.
 @immutable
 class Message {
   const Message({
@@ -29,13 +34,14 @@ class Message {
     required this.createdAt,
     required this.status,
     this.image,
+    this.audio,
   });
 
   final int id;
   final int conversationId;
   final MessageRole role;
 
-  /// User: non-empty after trim **or** an [image] is present (FR-004). Assistant: may be empty
+  /// User: non-empty after trim **or** an attachment is present (FR-004). Assistant: may be empty
   /// only transiently while generating.
   final String content;
 
@@ -51,9 +57,18 @@ class Message {
   /// assistant turns never carry one. Maps to the `imagePath` / `imageMimeType` columns.
   final ImageAttachment? image;
 
+  /// The voice clip attached to this turn (003 FR-018). Non-null only on user turns that included
+  /// audio; exclusive with [image]. Maps to the `audioPath` / `audioMimeType` columns (schema v3).
+  final AudioAttachment? audio;
+
   bool get isUser => role == MessageRole.user;
 
-  Message copyWith({String? content, MessageStatus? status, ImageAttachment? image}) {
+  Message copyWith({
+    String? content,
+    MessageStatus? status,
+    ImageAttachment? image,
+    AudioAttachment? audio,
+  }) {
     return Message(
       id: id,
       conversationId: conversationId,
@@ -63,6 +78,7 @@ class Message {
       createdAt: createdAt,
       status: status ?? this.status,
       image: image ?? this.image,
+      audio: audio ?? this.audio,
     );
   }
 
@@ -76,9 +92,10 @@ class Message {
       other.sequence == sequence &&
       other.createdAt == createdAt &&
       other.status == status &&
-      other.image == image;
+      other.image == image &&
+      other.audio == audio;
 
   @override
-  int get hashCode =>
-      Object.hash(id, conversationId, role, content, sequence, createdAt, status, image);
+  int get hashCode => Object.hash(
+      id, conversationId, role, content, sequence, createdAt, status, image, audio);
 }

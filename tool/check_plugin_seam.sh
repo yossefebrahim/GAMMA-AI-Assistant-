@@ -8,6 +8,8 @@
 #   * package:flutter_gemma                     → ONLY lib/infrastructure/gemma/  (GemmaService)
 #   * package:image_picker / permission_handler → ONLY lib/infrastructure/media/  (MediaPickerService
 #                                                  / MediaPermissionService — 002 R2/R3)
+#   * package:record / audioplayers             → ONLY lib/infrastructure/media/  (AudioRecorderService
+#                                                  / AudioPreviewPlayer — 003 R2/R4)
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -40,8 +42,12 @@ check_seam "image_picker|permission_handler" "lib/infrastructure/media/" \
   "image_picker/permission_handler" \
   "depend on lib/domain/services/media_picker_service.dart or media_permission_service.dart instead."
 
+check_seam "record|audioplayers" "lib/infrastructure/media/" \
+  "record/audioplayers" \
+  "depend on lib/domain/services/audio_recorder_service.dart or audio_preview_player.dart instead."
+
 if [[ "$status" -ne 0 ]]; then
   exit 1
 fi
 
-echo "✓ Plugin seams intact — flutter_gemma → lib/infrastructure/gemma/; image_picker/permission_handler → lib/infrastructure/media/"
+echo "✓ Plugin seams intact — flutter_gemma → lib/infrastructure/gemma/; image_picker/permission_handler/record/audioplayers → lib/infrastructure/media/"

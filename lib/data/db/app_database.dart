@@ -18,7 +18,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _open());
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   // Store DateTimes as ISO-8601 TEXT (UTC) instead of integer Unix *seconds* (drift's default).
   // This preserves sub-second precision so the history list orders correctly when conversations
@@ -37,6 +37,12 @@ class AppDatabase extends _$AppDatabase {
           if (from < 2) {
             await m.addColumn(messages, messages.imagePath);
             await m.addColumn(messages, messages.imageMimeType);
+          }
+          // v2 → v3 (003): add the nullable audio columns (additive only; v2 rows untouched —
+          // data-model.md §2). Fresh installs land on v3 directly via onCreate.
+          if (from < 3) {
+            await m.addColumn(messages, messages.audioPath);
+            await m.addColumn(messages, messages.audioMimeType);
           }
         },
         beforeOpen: (details) async {
