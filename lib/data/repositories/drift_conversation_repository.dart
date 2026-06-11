@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:ai_assistant/data/audio/audio_file_store.dart';
 import 'package:ai_assistant/data/db/app_database.dart';
 import 'package:ai_assistant/data/images/image_file_store.dart';
@@ -5,6 +7,8 @@ import 'package:ai_assistant/domain/entities/audio_attachment.dart';
 import 'package:ai_assistant/domain/entities/conversation.dart';
 import 'package:ai_assistant/domain/entities/image_attachment.dart';
 import 'package:ai_assistant/domain/entities/message.dart';
+import 'package:ai_assistant/domain/entities/tool_outcome.dart';
+import 'package:ai_assistant/domain/entities/tool_spec.dart';
 import 'package:ai_assistant/domain/repositories/conversation_repository.dart';
 import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -57,7 +61,18 @@ class DriftConversationRepository implements ConversationRepository {
         audio: r.audioPath == null
             ? null
             : AudioAttachment(path: r.audioPath!, mimeType: r.audioMimeType),
+        toolName: r.toolName,
+        toolArgs: _decodeJson(r.toolArgs),
+        toolStatus:
+            r.toolStatus == null ? null : ToolCallStatus.values.byName(r.toolStatus!),
+        toolResult: _decodeJson(r.toolResult),
       );
+
+  Map<String, Object?>? _decodeJson(String? raw) {
+    if (raw == null) return null;
+    final decoded = jsonDecode(raw);
+    return decoded is Map ? decoded.cast<String, Object?>() : null;
+  }
 
   String _deriveTitle(String firstMessage) {
     final trimmed = firstMessage.trim();
@@ -161,6 +176,14 @@ class DriftConversationRepository implements ConversationRepository {
   }
 
   @override
+  Future<void> deleteMessage(int messageId) async {
+    final message = await _dao.messageById(messageId);
+    await _dao.deleteMessageById(messageId);
+    // Keep the history list fresh after dropping the empty placeholder.
+    await _dao.touchConversation(message.conversationId, _now());
+  }
+
+  @override
   Future<void> finalizeAssistantMessage(int messageId, MessageStatus status) async {
     await _dao.writeMessage(messageId, MessagesCompanion(status: Value(status.name)));
     // Bump the parent conversation so the history list reflects the completed turn.
@@ -172,6 +195,90 @@ class DriftConversationRepository implements ConversationRepository {
   Future<List<Message>> loadTurns(int conversationId) async {
     final rows = await _dao.messagesFor(conversationId);
     return rows.map(_toMessage).toList();
+  }
+
+  /// Absolute ceiling for a persisted tool result JSON (004 R3 / contract guarantee 4) — the
+  /// belt-and-braces check; the dispatcher truncates to the per-tool bound first.
+  static const int maxToolResultChars = ToolSpec.clipboardResultCharBound;
+
+  @override
+  Future<int> appendToolInvocation({
+    required int conversationId,
+    required String toolName,
+    required Map<String, Object?> args,
+  }) async {
+    // Field invariant (contract guarantee 1): a tool row must name its tool.
+    if (toolName.trim().isEmpty) {
+      throw ArgumentError.value(toolName, 'toolName', 'A tool row must carry a tool name');
+    }
+    final now = _now();
+    final sequence = await _dao.nextSequence(conversationId);
+    final messageId = await _dao.insertMessage(
+      MessagesCompanion.insert(
+        conversationId: conversationId,
+        role: MessageRole.tool.name,
+        content: '', // the chip summary is written on finalize
+        sequence: sequence,
+        createdAt: now,
+        // The streaming-lifecycle column stays `complete` for tool rows — the tool lifecycle lives
+        // in toolStatus, not the streaming status machine (data-model §2).
+        status: MessageStatus.complete.name,
+        toolName: Value(toolName),
+        toolArgs: Value(jsonEncode(args)),
+        toolStatus: Value(ToolCallStatus.running.name),
+      ),
+    );
+    await _dao.touchConversation(conversationId, now);
+    return messageId;
+  }
+
+  @override
+  Future<void> finalizeToolInvocation(
+    int messageId, {
+    required ToolCallStatus status,
+    Map<String, Object?>? result,
+    required String summary,
+  }) async {
+    // Terminal states only (contract guarantee 2) — `running` is never written by finalize.
+    if (status == ToolCallStatus.running) {
+      throw ArgumentError.value(
+          status, 'status', 'finalizeToolInvocation accepts terminal states only');
+    }
+    final encoded = result == null ? null : jsonEncode(result);
+    // Result bound enforced at write (contract guarantee 4) — the dispatcher truncated first.
+    if (encoded != null && encoded.length > maxToolResultChars) {
+      throw ArgumentError.value(
+        encoded.length,
+        'result',
+        'tool result JSON exceeds the $maxToolResultChars-char ceiling',
+      );
+    }
+    await _dao.writeMessage(
+      messageId,
+      MessagesCompanion(
+        content: Value(summary),
+        toolStatus: Value(status.name),
+        toolResult: Value(encoded),
+      ),
+    );
+    final message = await _dao.messageById(messageId);
+    await _dao.touchConversation(message.conversationId, _now());
+  }
+
+  @override
+  Future<int> sweepStaleToolInvocations() async {
+    final stale = await _dao.runningToolMessages();
+    for (final row in stale) {
+      await _dao.writeMessage(
+        row.id,
+        MessagesCompanion(
+          content: const Value('interrupted'),
+          toolStatus: Value(ToolCallStatus.error.name),
+          toolResult: Value(jsonEncode(const {'error': 'interrupted'})),
+        ),
+      );
+    }
+    return stale.length;
   }
 
   @override

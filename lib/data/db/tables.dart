@@ -26,7 +26,8 @@ class Messages extends Table {
   IntColumn get conversationId =>
       integer().references(Conversations, #id, onDelete: KeyAction.cascade)();
 
-  /// `MessageRole.name` — 'user' | 'assistant'.
+  /// `MessageRole.name` — 'user' | 'assistant' | 'tool' (the 'tool' value added in schema v4,
+  /// domain-enforced — no SQL CHECK, consistent with existing role handling).
   TextColumn get role => text()();
 
   TextColumn get content => text()();
@@ -57,6 +58,26 @@ class Messages extends Table {
   /// Best-effort MIME type of [audioPath] (`audio/wav`), for rendering/debugging (003, schema
   /// v3). Null when there is no audio.
   TextColumn get audioMimeType => text().nullable()();
+
+  /// Function calling (004, schema v4). A `role='tool'` row records ONE tool invocation: the
+  /// model-facing tool name, the attempted/validated args, the lifecycle status, and the bounded
+  /// result. All four are NULL for user/assistant rows (domain XOR invariant, data-model §1); a
+  /// tool row never carries image/audio. Added by the v3→v4 migration as nullable, so existing
+  /// rows stay valid (FR-013/FR-019).
+
+  /// The tool name (snake_case registry id). Non-null iff role == tool.
+  TextColumn get toolName => text().nullable()();
+
+  /// The model's arguments as JSON. Non-null iff role == tool (may be `{}`).
+  TextColumn get toolArgs => text().nullable()();
+
+  /// `ToolCallStatus.name` — 'running' | 'success' | 'error' | 'skipped'. Non-null iff role ==
+  /// tool. `running` is transient; a startup sweep finalizes any stale `running` row.
+  TextColumn get toolStatus => text().nullable()();
+
+  /// The result as JSON — the success payload, or `{error: reason}` otherwise. Bounded per-tool
+  /// (≤ 4,400 absolute ceiling, app-enforced). Null while `running`.
+  TextColumn get toolResult => text().nullable()();
 }
 
 @DataClassName('ModelInstallRow')

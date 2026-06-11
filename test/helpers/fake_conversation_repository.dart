@@ -4,6 +4,8 @@ import 'package:ai_assistant/domain/entities/audio_attachment.dart';
 import 'package:ai_assistant/domain/entities/conversation.dart';
 import 'package:ai_assistant/domain/entities/image_attachment.dart';
 import 'package:ai_assistant/domain/entities/message.dart';
+import 'package:ai_assistant/domain/entities/tool_outcome.dart';
+import 'package:ai_assistant/domain/entities/tool_spec.dart';
 import 'package:ai_assistant/domain/repositories/conversation_repository.dart';
 
 /// Lightweight in-memory [ConversationRepository] for controller tests (contract:
@@ -164,6 +166,18 @@ class FakeConversationRepository implements ConversationRepository {
   }
 
   @override
+  Future<void> deleteMessage(int messageId) async {
+    for (final entry in _messages.entries) {
+      final index = entry.value.indexWhere((m) => m.id == messageId);
+      if (index != -1) {
+        entry.value.removeAt(index);
+        _emitMessages(entry.key);
+        return;
+      }
+    }
+  }
+
+  @override
   Future<void> finalizeAssistantMessage(int messageId, MessageStatus status) async {
     final conversationId = _mutateMessage(messageId, (m) => m.copyWith(status: status));
     if (conversationId != null) {
@@ -189,6 +203,86 @@ class FakeConversationRepository implements ConversationRepository {
   @override
   Future<List<Message>> loadTurns(int conversationId) async {
     return List<Message>.unmodifiable(_messages[conversationId] ?? const <Message>[]);
+  }
+
+  @override
+  Future<int> appendToolInvocation({
+    required int conversationId,
+    required String toolName,
+    required Map<String, Object?> args,
+  }) async {
+    if (toolName.trim().isEmpty) {
+      throw ArgumentError.value(toolName, 'toolName', 'A tool row must carry a tool name');
+    }
+    final now = _now();
+    final list = _messages[conversationId] ??= <Message>[];
+    final id = ++_messageSeq;
+    list.add(
+      Message(
+        id: id,
+        conversationId: conversationId,
+        role: MessageRole.tool,
+        content: '',
+        sequence: list.length,
+        createdAt: now,
+        status: MessageStatus.complete,
+        toolName: toolName,
+        toolArgs: Map<String, Object?>.of(args),
+        toolStatus: ToolCallStatus.running,
+      ),
+    );
+    final conversation = _conversations[conversationId]!;
+    _conversations[conversationId] = conversation.copyWith(updatedAt: now);
+    _emitMessages(conversationId);
+    _emitConversations();
+    return id;
+  }
+
+  @override
+  Future<void> finalizeToolInvocation(
+    int messageId, {
+    required ToolCallStatus status,
+    Map<String, Object?>? result,
+    required String summary,
+  }) async {
+    if (status == ToolCallStatus.running) {
+      throw ArgumentError.value(
+          status, 'status', 'finalizeToolInvocation accepts terminal states only');
+    }
+    // Mirror the drift repo's ceiling check on the encoded length (contract guarantee 4).
+    if (result != null &&
+        result.toString().length > ToolSpec.clipboardResultCharBound * 2) {
+      throw ArgumentError.value(result, 'result', 'tool result exceeds the ceiling');
+    }
+    final conversationId = _mutateMessage(
+      messageId,
+      (m) => m.copyWith(content: summary, toolStatus: status, toolResult: result),
+    );
+    if (conversationId != null) {
+      final conversation = _conversations[conversationId]!;
+      _conversations[conversationId] = conversation.copyWith(updatedAt: _now());
+      _emitConversations();
+    }
+  }
+
+  @override
+  Future<int> sweepStaleToolInvocations() async {
+    var swept = 0;
+    for (final entry in _messages.entries) {
+      for (var i = 0; i < entry.value.length; i++) {
+        final m = entry.value[i];
+        if (m.role == MessageRole.tool && m.toolStatus == ToolCallStatus.running) {
+          entry.value[i] = m.copyWith(
+            content: 'interrupted',
+            toolStatus: ToolCallStatus.error,
+            toolResult: const {'error': 'interrupted'},
+          );
+          swept++;
+        }
+      }
+      _emitMessages(entry.key);
+    }
+    return swept;
   }
 
   @override

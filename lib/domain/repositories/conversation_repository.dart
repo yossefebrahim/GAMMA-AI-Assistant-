@@ -2,6 +2,7 @@ import 'package:ai_assistant/domain/entities/audio_attachment.dart';
 import 'package:ai_assistant/domain/entities/conversation.dart';
 import 'package:ai_assistant/domain/entities/image_attachment.dart';
 import 'package:ai_assistant/domain/entities/message.dart';
+import 'package:ai_assistant/domain/entities/tool_outcome.dart';
 
 /// Abstraction over `drift` persistence (R3) — the only seam for conversation/message storage.
 ///
@@ -38,6 +39,11 @@ abstract interface class ConversationRepository {
   /// Create an assistant message in `streaming` state; returns its id (FR-013).
   Future<int> beginAssistantMessage(int conversationId);
 
+  /// Delete a single message by id (004 — the controller's tool-turn ordering rule drops an EMPTY
+  /// streaming assistant row before inserting the tool chip so history reads user → chip → answer,
+  /// data-model §4).
+  Future<void> deleteMessage(int messageId);
+
   /// Replace the streaming assistant message content as deltas accumulate.
   Future<void> updateAssistantContent(int messageId, String content);
 
@@ -47,6 +53,33 @@ abstract interface class ConversationRepository {
 
   /// Ordered turns for context assembly, including stopped-partial turns (FR-017).
   Future<List<Message>> loadTurns(int conversationId);
+
+  /// Append a tool-invocation row in `running` state at the next sequence (004 contract
+  /// conversation_repository.md). Returns its message id. Throws [ArgumentError] on the field
+  /// invariants (empty [toolName]). The row's `content` (chip summary) is set on
+  /// [finalizeToolInvocation].
+  Future<int> appendToolInvocation({
+    required int conversationId,
+    required String toolName,
+    required Map<String, Object?> args,
+  });
+
+  /// Finalize a tool invocation to a TERMINAL state (`success` | `error` | `skipped`) with its
+  /// bounded result/error payload and the chip's one-line [summary] (004). Rejects
+  /// [ToolCallStatus.running] with [ArgumentError] (guarantee 2); rejects a [result] JSON over the
+  /// 4,400-char absolute ceiling (guarantee 4).
+  Future<void> finalizeToolInvocation(
+    int messageId, {
+    required ToolCallStatus status,
+    Map<String, Object?>? result,
+    required String summary,
+  });
+
+  /// Finalize any stale `running` tool rows to `error('interrupted')` (004 data-model §4 terminal-
+  /// state guarantee). Called at conversation open / startup — mirrors the existing stale-
+  /// `streaming` finalization so reopened history never shows an in-flight chip. Returns the count
+  /// swept.
+  Future<int> sweepStaleToolInvocations();
 
   /// Delete a conversation: removes its image AND audio files (FR-019; 003
   /// contracts/conversation_repository.md #3 — file cleanup happens BEFORE the cascading row

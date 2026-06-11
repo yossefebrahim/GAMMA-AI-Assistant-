@@ -1,6 +1,8 @@
 import 'package:ai_assistant/core/model_catalog.dart';
+import 'package:ai_assistant/core/tools/tool_registry.dart';
 import 'package:ai_assistant/data/model/background_model_downloader.dart';
 import 'package:ai_assistant/domain/entities/model_capabilities.dart';
+import 'package:ai_assistant/domain/entities/tool_spec.dart';
 import 'package:ai_assistant/domain/services/audio_preview_player.dart';
 import 'package:ai_assistant/domain/services/audio_recorder_service.dart';
 import 'package:ai_assistant/domain/services/gemma_service.dart';
@@ -34,8 +36,13 @@ final modelSessionProvider = FutureProvider.autoDispose<GemmaService>((ref) asyn
   final gemma = ref.read(gemmaServiceProvider);
   if (!gemma.isLoaded) {
     // Capabilities flow as DATA from the catalog into the seam (Principle III, FR-006) — the seam
-    // enables the matching modalities and reports them back via `capabilities`.
-    await gemma.loadModel(path, capabilities: ModelCatalog.capabilities);
+    // enables the matching modalities and reports them back via `capabilities`. Tools are
+    // STRUCTURALLY COUPLED to the capability (004 guarantee 18): they are passed ONLY when
+    // functionCalling is on, so flag-off load is byte-identical to 003 (guarantee 19).
+    final tools = ModelCatalog.capabilities.functionCalling
+        ? ToolRegistry.specs
+        : const <ToolSpec>[];
+    await gemma.loadModel(path, capabilities: ModelCatalog.capabilities, tools: tools);
   }
   // Release on leaving chat (no more listeners) — exactly one active model at a time.
   ref.onDispose(() async {

@@ -68,7 +68,22 @@ class ConversationDao extends DatabaseAccessor<AppDatabase> with _$ConversationD
   Future<void> writeMessage(int id, MessagesCompanion entry) =>
       (update(messages)..where((m) => m.id.equals(id))).write(entry);
 
+  /// All tool-invocation rows still in the transient `running` state (004) — the startup/open
+  /// sweep finalizes these to `error('interrupted')` so reopened history never shows an in-flight
+  /// chip (data-model §4).
+  Future<List<MessageRow>> runningToolMessages() {
+    return (select(messages)
+          ..where((m) =>
+              m.role.equals('tool') & m.toolStatus.equals('running')))
+        .get();
+  }
+
   /// Deletes the conversation; messages cascade via the FK (FR-022).
   Future<int> deleteConversationById(int id) =>
       (delete(conversations)..where((c) => c.id.equals(id))).go();
+
+  /// Delete a single message row (004 — the controller's ordering rule drops an EMPTY streaming
+  /// assistant row before a tool chip so history reads user → chip → answer).
+  Future<int> deleteMessageById(int id) =>
+      (delete(messages)..where((m) => m.id.equals(id))).go();
 }

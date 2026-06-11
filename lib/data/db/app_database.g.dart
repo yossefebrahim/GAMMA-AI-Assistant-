@@ -434,6 +434,50 @@ class $MessagesTable extends Messages
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _toolNameMeta = const VerificationMeta(
+    'toolName',
+  );
+  @override
+  late final GeneratedColumn<String> toolName = GeneratedColumn<String>(
+    'tool_name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _toolArgsMeta = const VerificationMeta(
+    'toolArgs',
+  );
+  @override
+  late final GeneratedColumn<String> toolArgs = GeneratedColumn<String>(
+    'tool_args',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _toolStatusMeta = const VerificationMeta(
+    'toolStatus',
+  );
+  @override
+  late final GeneratedColumn<String> toolStatus = GeneratedColumn<String>(
+    'tool_status',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _toolResultMeta = const VerificationMeta(
+    'toolResult',
+  );
+  @override
+  late final GeneratedColumn<String> toolResult = GeneratedColumn<String>(
+    'tool_result',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -447,6 +491,10 @@ class $MessagesTable extends Messages
     imageMimeType,
     audioPath,
     audioMimeType,
+    toolName,
+    toolArgs,
+    toolStatus,
+    toolResult,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -544,6 +592,30 @@ class $MessagesTable extends Messages
         ),
       );
     }
+    if (data.containsKey('tool_name')) {
+      context.handle(
+        _toolNameMeta,
+        toolName.isAcceptableOrUnknown(data['tool_name']!, _toolNameMeta),
+      );
+    }
+    if (data.containsKey('tool_args')) {
+      context.handle(
+        _toolArgsMeta,
+        toolArgs.isAcceptableOrUnknown(data['tool_args']!, _toolArgsMeta),
+      );
+    }
+    if (data.containsKey('tool_status')) {
+      context.handle(
+        _toolStatusMeta,
+        toolStatus.isAcceptableOrUnknown(data['tool_status']!, _toolStatusMeta),
+      );
+    }
+    if (data.containsKey('tool_result')) {
+      context.handle(
+        _toolResultMeta,
+        toolResult.isAcceptableOrUnknown(data['tool_result']!, _toolResultMeta),
+      );
+    }
     return context;
   }
 
@@ -597,6 +669,22 @@ class $MessagesTable extends Messages
         DriftSqlType.string,
         data['${effectivePrefix}audio_mime_type'],
       ),
+      toolName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}tool_name'],
+      ),
+      toolArgs: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}tool_args'],
+      ),
+      toolStatus: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}tool_status'],
+      ),
+      toolResult: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}tool_result'],
+      ),
     );
   }
 
@@ -612,7 +700,8 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
   /// FK → conversations.id, ON DELETE CASCADE (FR-022).
   final int conversationId;
 
-  /// `MessageRole.name` — 'user' | 'assistant'.
+  /// `MessageRole.name` — 'user' | 'assistant' | 'tool' (the 'tool' value added in schema v4,
+  /// domain-enforced — no SQL CHECK, consistent with existing role handling).
   final String role;
   final String content;
 
@@ -641,6 +730,25 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
   /// Best-effort MIME type of [audioPath] (`audio/wav`), for rendering/debugging (003, schema
   /// v3). Null when there is no audio.
   final String? audioMimeType;
+
+  /// Function calling (004, schema v4). A `role='tool'` row records ONE tool invocation: the
+  /// model-facing tool name, the attempted/validated args, the lifecycle status, and the bounded
+  /// result. All four are NULL for user/assistant rows (domain XOR invariant, data-model §1); a
+  /// tool row never carries image/audio. Added by the v3→v4 migration as nullable, so existing
+  /// rows stay valid (FR-013/FR-019).
+  /// The tool name (snake_case registry id). Non-null iff role == tool.
+  final String? toolName;
+
+  /// The model's arguments as JSON. Non-null iff role == tool (may be `{}`).
+  final String? toolArgs;
+
+  /// `ToolCallStatus.name` — 'running' | 'success' | 'error' | 'skipped'. Non-null iff role ==
+  /// tool. `running` is transient; a startup sweep finalizes any stale `running` row.
+  final String? toolStatus;
+
+  /// The result as JSON — the success payload, or `{error: reason}` otherwise. Bounded per-tool
+  /// (≤ 4,400 absolute ceiling, app-enforced). Null while `running`.
+  final String? toolResult;
   const MessageRow({
     required this.id,
     required this.conversationId,
@@ -653,6 +761,10 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
     this.imageMimeType,
     this.audioPath,
     this.audioMimeType,
+    this.toolName,
+    this.toolArgs,
+    this.toolStatus,
+    this.toolResult,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -675,6 +787,18 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
     }
     if (!nullToAbsent || audioMimeType != null) {
       map['audio_mime_type'] = Variable<String>(audioMimeType);
+    }
+    if (!nullToAbsent || toolName != null) {
+      map['tool_name'] = Variable<String>(toolName);
+    }
+    if (!nullToAbsent || toolArgs != null) {
+      map['tool_args'] = Variable<String>(toolArgs);
+    }
+    if (!nullToAbsent || toolStatus != null) {
+      map['tool_status'] = Variable<String>(toolStatus);
+    }
+    if (!nullToAbsent || toolResult != null) {
+      map['tool_result'] = Variable<String>(toolResult);
     }
     return map;
   }
@@ -700,6 +824,18 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
       audioMimeType: audioMimeType == null && nullToAbsent
           ? const Value.absent()
           : Value(audioMimeType),
+      toolName: toolName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(toolName),
+      toolArgs: toolArgs == null && nullToAbsent
+          ? const Value.absent()
+          : Value(toolArgs),
+      toolStatus: toolStatus == null && nullToAbsent
+          ? const Value.absent()
+          : Value(toolStatus),
+      toolResult: toolResult == null && nullToAbsent
+          ? const Value.absent()
+          : Value(toolResult),
     );
   }
 
@@ -720,6 +856,10 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
       imageMimeType: serializer.fromJson<String?>(json['imageMimeType']),
       audioPath: serializer.fromJson<String?>(json['audioPath']),
       audioMimeType: serializer.fromJson<String?>(json['audioMimeType']),
+      toolName: serializer.fromJson<String?>(json['toolName']),
+      toolArgs: serializer.fromJson<String?>(json['toolArgs']),
+      toolStatus: serializer.fromJson<String?>(json['toolStatus']),
+      toolResult: serializer.fromJson<String?>(json['toolResult']),
     );
   }
   @override
@@ -737,6 +877,10 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
       'imageMimeType': serializer.toJson<String?>(imageMimeType),
       'audioPath': serializer.toJson<String?>(audioPath),
       'audioMimeType': serializer.toJson<String?>(audioMimeType),
+      'toolName': serializer.toJson<String?>(toolName),
+      'toolArgs': serializer.toJson<String?>(toolArgs),
+      'toolStatus': serializer.toJson<String?>(toolStatus),
+      'toolResult': serializer.toJson<String?>(toolResult),
     };
   }
 
@@ -752,6 +896,10 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
     Value<String?> imageMimeType = const Value.absent(),
     Value<String?> audioPath = const Value.absent(),
     Value<String?> audioMimeType = const Value.absent(),
+    Value<String?> toolName = const Value.absent(),
+    Value<String?> toolArgs = const Value.absent(),
+    Value<String?> toolStatus = const Value.absent(),
+    Value<String?> toolResult = const Value.absent(),
   }) => MessageRow(
     id: id ?? this.id,
     conversationId: conversationId ?? this.conversationId,
@@ -768,6 +916,10 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
     audioMimeType: audioMimeType.present
         ? audioMimeType.value
         : this.audioMimeType,
+    toolName: toolName.present ? toolName.value : this.toolName,
+    toolArgs: toolArgs.present ? toolArgs.value : this.toolArgs,
+    toolStatus: toolStatus.present ? toolStatus.value : this.toolStatus,
+    toolResult: toolResult.present ? toolResult.value : this.toolResult,
   );
   MessageRow copyWithCompanion(MessagesCompanion data) {
     return MessageRow(
@@ -788,6 +940,14 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
       audioMimeType: data.audioMimeType.present
           ? data.audioMimeType.value
           : this.audioMimeType,
+      toolName: data.toolName.present ? data.toolName.value : this.toolName,
+      toolArgs: data.toolArgs.present ? data.toolArgs.value : this.toolArgs,
+      toolStatus: data.toolStatus.present
+          ? data.toolStatus.value
+          : this.toolStatus,
+      toolResult: data.toolResult.present
+          ? data.toolResult.value
+          : this.toolResult,
     );
   }
 
@@ -804,7 +964,11 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
           ..write('imagePath: $imagePath, ')
           ..write('imageMimeType: $imageMimeType, ')
           ..write('audioPath: $audioPath, ')
-          ..write('audioMimeType: $audioMimeType')
+          ..write('audioMimeType: $audioMimeType, ')
+          ..write('toolName: $toolName, ')
+          ..write('toolArgs: $toolArgs, ')
+          ..write('toolStatus: $toolStatus, ')
+          ..write('toolResult: $toolResult')
           ..write(')'))
         .toString();
   }
@@ -822,6 +986,10 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
     imageMimeType,
     audioPath,
     audioMimeType,
+    toolName,
+    toolArgs,
+    toolStatus,
+    toolResult,
   );
   @override
   bool operator ==(Object other) =>
@@ -837,7 +1005,11 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
           other.imagePath == this.imagePath &&
           other.imageMimeType == this.imageMimeType &&
           other.audioPath == this.audioPath &&
-          other.audioMimeType == this.audioMimeType);
+          other.audioMimeType == this.audioMimeType &&
+          other.toolName == this.toolName &&
+          other.toolArgs == this.toolArgs &&
+          other.toolStatus == this.toolStatus &&
+          other.toolResult == this.toolResult);
 }
 
 class MessagesCompanion extends UpdateCompanion<MessageRow> {
@@ -852,6 +1024,10 @@ class MessagesCompanion extends UpdateCompanion<MessageRow> {
   final Value<String?> imageMimeType;
   final Value<String?> audioPath;
   final Value<String?> audioMimeType;
+  final Value<String?> toolName;
+  final Value<String?> toolArgs;
+  final Value<String?> toolStatus;
+  final Value<String?> toolResult;
   const MessagesCompanion({
     this.id = const Value.absent(),
     this.conversationId = const Value.absent(),
@@ -864,6 +1040,10 @@ class MessagesCompanion extends UpdateCompanion<MessageRow> {
     this.imageMimeType = const Value.absent(),
     this.audioPath = const Value.absent(),
     this.audioMimeType = const Value.absent(),
+    this.toolName = const Value.absent(),
+    this.toolArgs = const Value.absent(),
+    this.toolStatus = const Value.absent(),
+    this.toolResult = const Value.absent(),
   });
   MessagesCompanion.insert({
     this.id = const Value.absent(),
@@ -877,6 +1057,10 @@ class MessagesCompanion extends UpdateCompanion<MessageRow> {
     this.imageMimeType = const Value.absent(),
     this.audioPath = const Value.absent(),
     this.audioMimeType = const Value.absent(),
+    this.toolName = const Value.absent(),
+    this.toolArgs = const Value.absent(),
+    this.toolStatus = const Value.absent(),
+    this.toolResult = const Value.absent(),
   }) : conversationId = Value(conversationId),
        role = Value(role),
        content = Value(content),
@@ -895,6 +1079,10 @@ class MessagesCompanion extends UpdateCompanion<MessageRow> {
     Expression<String>? imageMimeType,
     Expression<String>? audioPath,
     Expression<String>? audioMimeType,
+    Expression<String>? toolName,
+    Expression<String>? toolArgs,
+    Expression<String>? toolStatus,
+    Expression<String>? toolResult,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -908,6 +1096,10 @@ class MessagesCompanion extends UpdateCompanion<MessageRow> {
       if (imageMimeType != null) 'image_mime_type': imageMimeType,
       if (audioPath != null) 'audio_path': audioPath,
       if (audioMimeType != null) 'audio_mime_type': audioMimeType,
+      if (toolName != null) 'tool_name': toolName,
+      if (toolArgs != null) 'tool_args': toolArgs,
+      if (toolStatus != null) 'tool_status': toolStatus,
+      if (toolResult != null) 'tool_result': toolResult,
     });
   }
 
@@ -923,6 +1115,10 @@ class MessagesCompanion extends UpdateCompanion<MessageRow> {
     Value<String?>? imageMimeType,
     Value<String?>? audioPath,
     Value<String?>? audioMimeType,
+    Value<String?>? toolName,
+    Value<String?>? toolArgs,
+    Value<String?>? toolStatus,
+    Value<String?>? toolResult,
   }) {
     return MessagesCompanion(
       id: id ?? this.id,
@@ -936,6 +1132,10 @@ class MessagesCompanion extends UpdateCompanion<MessageRow> {
       imageMimeType: imageMimeType ?? this.imageMimeType,
       audioPath: audioPath ?? this.audioPath,
       audioMimeType: audioMimeType ?? this.audioMimeType,
+      toolName: toolName ?? this.toolName,
+      toolArgs: toolArgs ?? this.toolArgs,
+      toolStatus: toolStatus ?? this.toolStatus,
+      toolResult: toolResult ?? this.toolResult,
     );
   }
 
@@ -975,6 +1175,18 @@ class MessagesCompanion extends UpdateCompanion<MessageRow> {
     if (audioMimeType.present) {
       map['audio_mime_type'] = Variable<String>(audioMimeType.value);
     }
+    if (toolName.present) {
+      map['tool_name'] = Variable<String>(toolName.value);
+    }
+    if (toolArgs.present) {
+      map['tool_args'] = Variable<String>(toolArgs.value);
+    }
+    if (toolStatus.present) {
+      map['tool_status'] = Variable<String>(toolStatus.value);
+    }
+    if (toolResult.present) {
+      map['tool_result'] = Variable<String>(toolResult.value);
+    }
     return map;
   }
 
@@ -991,7 +1203,11 @@ class MessagesCompanion extends UpdateCompanion<MessageRow> {
           ..write('imagePath: $imagePath, ')
           ..write('imageMimeType: $imageMimeType, ')
           ..write('audioPath: $audioPath, ')
-          ..write('audioMimeType: $audioMimeType')
+          ..write('audioMimeType: $audioMimeType, ')
+          ..write('toolName: $toolName, ')
+          ..write('toolArgs: $toolArgs, ')
+          ..write('toolStatus: $toolStatus, ')
+          ..write('toolResult: $toolResult')
           ..write(')'))
         .toString();
   }
@@ -1977,6 +2193,10 @@ typedef $$MessagesTableCreateCompanionBuilder =
       Value<String?> imageMimeType,
       Value<String?> audioPath,
       Value<String?> audioMimeType,
+      Value<String?> toolName,
+      Value<String?> toolArgs,
+      Value<String?> toolStatus,
+      Value<String?> toolResult,
     });
 typedef $$MessagesTableUpdateCompanionBuilder =
     MessagesCompanion Function({
@@ -1991,6 +2211,10 @@ typedef $$MessagesTableUpdateCompanionBuilder =
       Value<String?> imageMimeType,
       Value<String?> audioPath,
       Value<String?> audioMimeType,
+      Value<String?> toolName,
+      Value<String?> toolArgs,
+      Value<String?> toolStatus,
+      Value<String?> toolResult,
     });
 
 final class $$MessagesTableReferences
@@ -2073,6 +2297,26 @@ class $$MessagesTableFilterComposer
 
   ColumnFilters<String> get audioMimeType => $composableBuilder(
     column: $table.audioMimeType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get toolName => $composableBuilder(
+    column: $table.toolName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get toolArgs => $composableBuilder(
+    column: $table.toolArgs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get toolStatus => $composableBuilder(
+    column: $table.toolStatus,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get toolResult => $composableBuilder(
+    column: $table.toolResult,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -2159,6 +2403,26 @@ class $$MessagesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get toolName => $composableBuilder(
+    column: $table.toolName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get toolArgs => $composableBuilder(
+    column: $table.toolArgs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get toolStatus => $composableBuilder(
+    column: $table.toolStatus,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get toolResult => $composableBuilder(
+    column: $table.toolResult,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$ConversationsTableOrderingComposer get conversationId {
     final $$ConversationsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -2226,6 +2490,22 @@ class $$MessagesTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<String> get toolName =>
+      $composableBuilder(column: $table.toolName, builder: (column) => column);
+
+  GeneratedColumn<String> get toolArgs =>
+      $composableBuilder(column: $table.toolArgs, builder: (column) => column);
+
+  GeneratedColumn<String> get toolStatus => $composableBuilder(
+    column: $table.toolStatus,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get toolResult => $composableBuilder(
+    column: $table.toolResult,
+    builder: (column) => column,
+  );
+
   $$ConversationsTableAnnotationComposer get conversationId {
     final $$ConversationsTableAnnotationComposer composer = $composerBuilder(
       composer: this,
@@ -2289,6 +2569,10 @@ class $$MessagesTableTableManager
                 Value<String?> imageMimeType = const Value.absent(),
                 Value<String?> audioPath = const Value.absent(),
                 Value<String?> audioMimeType = const Value.absent(),
+                Value<String?> toolName = const Value.absent(),
+                Value<String?> toolArgs = const Value.absent(),
+                Value<String?> toolStatus = const Value.absent(),
+                Value<String?> toolResult = const Value.absent(),
               }) => MessagesCompanion(
                 id: id,
                 conversationId: conversationId,
@@ -2301,6 +2585,10 @@ class $$MessagesTableTableManager
                 imageMimeType: imageMimeType,
                 audioPath: audioPath,
                 audioMimeType: audioMimeType,
+                toolName: toolName,
+                toolArgs: toolArgs,
+                toolStatus: toolStatus,
+                toolResult: toolResult,
               ),
           createCompanionCallback:
               ({
@@ -2315,6 +2603,10 @@ class $$MessagesTableTableManager
                 Value<String?> imageMimeType = const Value.absent(),
                 Value<String?> audioPath = const Value.absent(),
                 Value<String?> audioMimeType = const Value.absent(),
+                Value<String?> toolName = const Value.absent(),
+                Value<String?> toolArgs = const Value.absent(),
+                Value<String?> toolStatus = const Value.absent(),
+                Value<String?> toolResult = const Value.absent(),
               }) => MessagesCompanion.insert(
                 id: id,
                 conversationId: conversationId,
@@ -2327,6 +2619,10 @@ class $$MessagesTableTableManager
                 imageMimeType: imageMimeType,
                 audioPath: audioPath,
                 audioMimeType: audioMimeType,
+                toolName: toolName,
+                toolArgs: toolArgs,
+                toolStatus: toolStatus,
+                toolResult: toolResult,
               ),
           withReferenceMapper: (p0) => p0
               .map(

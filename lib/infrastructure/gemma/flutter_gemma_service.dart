@@ -1,8 +1,13 @@
+import 'package:ai_assistant/core/tools/tool_registry.dart';
 import 'package:ai_assistant/domain/entities/audio_input.dart';
 import 'package:ai_assistant/domain/entities/chat_turn.dart';
+import 'package:ai_assistant/domain/entities/generation_event.dart';
 import 'package:ai_assistant/domain/entities/image_input.dart';
 import 'package:ai_assistant/domain/entities/model_capabilities.dart';
+import 'package:ai_assistant/domain/entities/tool_spec.dart';
 import 'package:ai_assistant/domain/services/gemma_service.dart';
+import 'package:ai_assistant/infrastructure/gemma/leak_filter.dart';
+import 'package:ai_assistant/infrastructure/gemma/tool_call_json.dart';
 import 'package:flutter/foundation.dart' show DebugPrintCallback, debugPrint;
 // `flutter_gemma` exports its OWN `ImageProcessingException` from `image_processor.dart`; hide it
 // so the domain `ImageProcessingException` (from gemma_service.dart) is the unprefixed type this
@@ -31,10 +36,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// BOTH backend activation attempts and to `createChat` (→ `enableAudioModality`); the current
 /// prompt and audio-bearing history turns map to `Message.withAudio`/`Message.audioOnly`. The
 /// seam gates ungated audio with its own [StateError] — load-bearing, because the plugin's FFI
-/// path SILENTLY DROPS audio when the flag was off at load (003 research R1, spike §1.2). The
-/// audio encoder runs CPU-side at generation start by plugin design; its cost lands in the
-/// first-token wait. Failures on audio-bearing prompts map to [AudioProcessingException],
-/// narrowly scoped to the current prompt (003 guarantee 15 / 002 audit L4).
+/// path SILENTLY DROPS audio when the flag was off at load (003 research R1, spike §1.2).
+///
+/// FUNCTION CALLING (004): when [ModelCapabilities.functionCalling] is true, model load threads the
+/// mapped tool declarations + `supportsFunctionCalls: true` + `toolChoice: ToolChoice.auto` + the
+/// R6 tool-use `systemInstruction` into `createChat` — all derived from ONE source so they can
+/// never desync (the spike's silent-trap rule, guarantee 18). `generate` yields sealed
+/// [GenerationEvent]s: text deltas pass through the [LeakFilter] (which suppresses the 100% raw-JSON
+/// leak, guarantee 20) and the end-of-stream `FunctionCallResponse` surfaces as a typed
+/// [ToolCallRequested]; `resumeWithToolResult` sends `Message.toolResponse` and re-generates for the
+/// ONE allowed round trip. Tool turns in `history` replay as the plugin's `Message.toolCall` +
+/// `Message.toolResponse` pair (the plugin's own history omits streamed tool calls — the app DB is
+/// the source of truth, guarantee 23).
 ///
 /// KEPT-WARM SESSION (the R1 "later optimization", now load-bearing for responsiveness): the
 /// plugin executes session create / prompt prefill / image encode ON THE ANDROID MAIN THREAD
@@ -42,16 +55,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// which recreates the native session and re-encodes EVERY history image — froze input and the
 /// keyboard for seconds. `generate` therefore fingerprints what the native session already holds
 /// and, when the caller's history is exactly the prior context plus the last exchange, appends
-/// only the new prompt instead of replaying. Any stop / error / cancel / reload marks the session
-/// dirty so the next send falls back to the full, correct resync. The seam contract is unchanged:
-/// callers still pass the full history every turn.
+/// only the new prompt instead of replaying. Any stop / error / cancel / reload — OR any tool turn
+/// in the conversation — marks the session dirty so the next send falls back to the full, correct
+/// resync. The seam contract is unchanged: callers still pass the full history every turn.
 class FlutterGemmaService implements GemmaService {
   static const int _maxTokens = 2048;
 
   /// flutter_gemma's `ServiceRegistry` must be initialized once before `installModel()`; it throws
   /// otherwise. `main.dart` can't do it (plugin-seam rule), so we do it lazily + idempotently here.
-  /// No `huggingFaceToken` — the model is a public artifact (Principle I: the only network egress is
-  /// the download, and that runs through `BackgroundModelDownloader`, not this seam).
   static bool _initialized = false;
 
   InferenceModel? _model;
@@ -59,22 +70,26 @@ class FlutterGemmaService implements GemmaService {
   bool _loaded = false;
   ModelCapabilities _capabilities = ModelCapabilities.textOnly;
 
+  /// Whether the active chat was created with function calling on — the SINGLE source the leak
+  /// filter and resume discipline derive from (guarantee 18 structural coupling).
+  bool _supportsFunctionCalls = false;
+
+  /// True between a [ToolCallRequested]-terminated stream and its [resumeWithToolResult] — gates
+  /// the one-allowed round trip (guarantee 22). Resume outside this window is a programmer error.
+  bool _awaitingToolResult = false;
+
   /// The real error from the most recent backend-activation attempt. Surfaced as the `cause` of the
-  /// [ModelLoadException] thrown when EVERY backend fails, so a load failure is diagnosable (e.g. a
-  /// 0.16.x `BackendInitException` / vision-encoder rejection) instead of silently masquerading as a
-  /// text-only model that "does not accept images" (002 audit).
+  /// [ModelLoadException] thrown when EVERY backend fails, so a load failure is diagnosable.
   Object? _lastActivationError;
 
-  /// What the native session currently holds, as cheap per-turn fingerprints (role + text + image
-  /// byte length — the bytes themselves are NOT retained between turns, Principle VIII). Null
-  /// whenever the native context may diverge from the caller's history (after load / stop / a
-  /// stream error / cancel / close), which forces the next [generate] to do the full
+  /// What the native session currently holds, as cheap per-turn fingerprints. Null whenever the
+  /// native context may diverge from the caller's history (after load / stop / a stream error /
+  /// cancel / close / any tool turn), which forces the next [generate] to do the full
   /// `clearHistory(replayHistory:)` resync.
   List<_TurnFingerprint>? _sessionTurns;
 
   /// Bumped by [loadModel] / [stop] / [close] so an in-flight [generate] can never commit
-  /// fingerprints for a session that was invalidated underneath it (e.g. `stop()` racing the
-  /// stream's natural end — the native cancel makes the stream finish "normally").
+  /// fingerprints for a session that was invalidated underneath it.
   int _sessionEpoch = 0;
 
   Future<void> _ensureInitialized() async {
@@ -91,8 +106,6 @@ class FlutterGemmaService implements GemmaService {
     if (!_loaded) {
       throw StateError('capabilities read before a model was loaded');
     }
-    // Capabilities are DATA from the catalog, passed into loadModel (Principle III) — never a fixed
-    // value or a per-model `if`.
     return _capabilities;
   }
 
@@ -100,45 +113,58 @@ class FlutterGemmaService implements GemmaService {
   Future<void> loadModel(
     String filePath, {
     ModelCapabilities capabilities = ModelCapabilities.textOnly,
+    List<ToolSpec> tools = const [],
   }) async {
+    // Guarantee 18 — the silent-trap closure (spike §1.3): tool declarations without the
+    // capability are unrepresentable. Checked BEFORE close() so it is a pure, state-free contract
+    // violation (testable without a device), and synchronous (a programmer error, not an async
+    // failure).
+    if (tools.isNotEmpty && !capabilities.functionCalling) {
+      throw StateError(
+          'loadModel(tools:) requires capabilities.functionCalling — refusing the silent-trap '
+          'combination (ungated tools would spill raw JSON / no-op)');
+    }
     // Release any previously-loaded model first → exactly one active (Principle VIII).
     await close();
     try {
       await _ensureInitialized();
-      // `.fromFile()` references the already-downloaded artifact in place (FileSourceHandler does
-      // not copy) and sets it as the active inference model. Gemma 4 E2B `.litertlm`.
       await FlutterGemma.installModel(
         modelType: ModelType.gemma4,
         fileType: ModelFileType.litertlm,
       ).fromFile(filePath).install();
 
       // Prefer GPU; fall back to CPU if the backend can't initialize / OOMs on an 8 GB device (R1).
-      // The model is created with vision/audio enabled when the catalog declares them — the
-      // modality flags ride BOTH attempts (003 R7.2: if GPU init fails with audio enabled, CPU is
-      // attempted with audio still on; never a silent capability flip).
       _lastActivationError = null;
       _model = await _activate(PreferredBackend.gpu,
               supportImage: capabilities.image, supportAudio: capabilities.audio) ??
           await _activate(PreferredBackend.cpu,
               supportImage: capabilities.image, supportAudio: capabilities.audio);
       if (_model == null) {
-        // Carry the swallowed backend error so the failure is diagnosable rather than generic (002
-        // audit): without this, a vision-load rejection surfaces downstream as a misleading
-        // "this model does not accept images" capability flip.
         throw ModelLoadException(
           'could not initialize a backend for the model',
           cause: _lastActivationError,
         );
       }
-      // Vision/audio modality on the chat session follows the catalog capability
-      // (enableVisionModality: supportImage / enableAudioModality: supportAudio), one image per
-      // message this slice (FR-005/FR-006, R1). maxNumImages lives on getActiveModel (createChat
-      // has no such param, even in 0.16.x).
+
+      // Structural coupling (guarantee 18 / R5): tools, supportsFunctionCalls, and the tool system
+      // instruction ALL derive from `capabilities.functionCalling`. When off, the inputs are
+      // byte-identical to 003 (guarantee 19): empty tools, flag false, no instruction.
+      final functionCalling = capabilities.functionCalling;
+      final pluginTools = functionCalling
+          ? [for (final spec in tools) _toPluginTool(spec)]
+          : const <Tool>[];
+      final systemInstruction =
+          functionCalling && pluginTools.isNotEmpty ? ToolRegistry.systemInstruction : null;
+      _supportsFunctionCalls = functionCalling;
+
       _chat = await _model!.createChat(
         modelType: ModelType.gemma4,
         supportImage: capabilities.image,
         supportAudio: capabilities.audio,
-        supportsFunctionCalls: false,
+        supportsFunctionCalls: functionCalling,
+        tools: pluginTools,
+        toolChoice: ToolChoice.auto,
+        systemInstruction: systemInstruction,
         isThinking: false,
       );
       _capabilities = capabilities;
@@ -166,10 +192,6 @@ class FlutterGemmaService implements GemmaService {
         supportAudio: supportAudio,
       );
     } catch (error, stackTrace) {
-      // Return null so the GPU→CPU fallback still proceeds, but DON'T discard the cause: keep it for
-      // the ModelLoadException, and log it so an on-device load failure is visible in logcat instead
-      // of a silent capability flip (002 audit). A backend that fails only with a modality enabled is
-      // the smoking gun for a "removed — this model does not accept …" symptom.
       _lastActivationError = error;
       debugPrint(
         'GemmaService: $backend activation failed (supportImage: $supportImage, '
@@ -179,15 +201,19 @@ class FlutterGemmaService implements GemmaService {
     }
   }
 
+  /// Map a domain [ToolSpec] to the plugin's `Tool` (the only place the two types meet).
+  Tool _toPluginTool(ToolSpec spec) =>
+      Tool(name: spec.name, description: spec.description, parameters: spec.parameters);
+
   @override
-  Stream<String> generate({
+  Stream<GenerationEvent> generate({
     required List<ChatTurn> history,
     required String prompt,
     ImageInput? image,
     AudioInput? audio,
   }) async* {
-    // One attachment per message — audio XOR image (003 guarantee 14, spec Q3). Checked before
-    // the loaded gate: it is state-free, so the contract is unit-testable without a device.
+    // One attachment per message — audio XOR image (003 guarantee 14, spec Q3). State-free, so the
+    // contract is unit-testable without a device.
     if (image != null && audio != null) {
       throw StateError('generate() called with both an image and audio');
     }
@@ -195,54 +221,80 @@ class FlutterGemmaService implements GemmaService {
     if (!_loaded || chat == null) {
       throw StateError('generate() called with no model loaded');
     }
-    // The caller must gate on capabilities before sending an image (FR-005, contract #12).
     if (image != null && !_capabilities.image) {
       throw StateError('generate(image:) called while the model does not support images');
     }
-    // The audio gate is LOAD-BEARING, not ceremony (003 guarantee 13): the plugin's FFI path
-    // silently drops audio that wasn't enabled at load (research R1), so without this StateError a
-    // mis-configured load would produce replies that ignore the clip with no error anywhere.
+    // The audio gate is LOAD-BEARING (003 guarantee 13): the plugin's FFI path silently drops audio
+    // that wasn't enabled at load.
     if (audio != null && !_capabilities.audio) {
       throw StateError('generate(audio:) called while the model does not support audio');
     }
 
     final involvesImage = image != null || history.any((turn) => turn.image != null);
 
-    // Warm fast path: when the caller's history is exactly what the native session already holds
-    // (the prior context plus the last prompt/reply exchange), skip the session-recreate + full
-    // replay — the plugin runs those on the Android main thread, and replaying re-encodes every
-    // history image, freezing input/keyboard for seconds on a mid-range device. The session is
-    // marked dirty up front and only re-fingerprinted after the stream drains cleanly, so a stop,
-    // error, or cancellation always forces the full resync next send (correct context wins).
+    // A tool turn anywhere in the conversation forces a full replay (the resume path mutates the
+    // native session in ways the warm fingerprints don't track — correctness over the optimization).
     final fingerprints = [for (final turn in history) _TurnFingerprint.ofTurn(turn)];
-    final warm = _matchesSession(fingerprints);
+    final warm = !history.any((turn) => turn.isTool) && _matchesSession(fingerprints);
     _sessionTurns = null;
     final epoch = _sessionEpoch;
+    _awaitingToolResult = false;
+
+    final filter = LeakFilter(active: _supportsFunctionCalls);
 
     try {
       if (!warm) {
-        // The caller owns context assembly + sliding window (FR-017/Q2), so rebuild the chat
-        // history from what it passes — including any image-bearing turns (FR-015/FR-016) — then
-        // add the new prompt.
+        // Rebuild the chat history from what the caller passes — expanding tool turns into the
+        // plugin's call+response replay pair (guarantee 23) — then add the new prompt.
         await chat.clearHistory(
-          replayHistory: history.map(_toPluginMessage).toList(),
+          replayHistory: [for (final turn in history) ..._replayMessages(turn)],
         );
       }
       await chat.addQueryChunk(_promptMessage(prompt, image, audio));
 
       final reply = StringBuffer();
+      var sawToolCall = false;
       await for (final response in chat.generateChatResponseAsync()) {
         if (response is TextResponse) {
-          reply.write(response.token);
-          yield response.token;
+          final emit = filter.process(response.token);
+          if (emit.isNotEmpty) {
+            reply.write(emit);
+            yield TextDelta(emit);
+          }
+        } else if (response is FunctionCallResponse) {
+          // End-of-stream call (guarantee 21). The withheld text was the raw-JSON leak — discard it.
+          sawToolCall = true;
+          filter.discardOnToolCall();
+          _awaitingToolResult = true;
+          yield ToolCallRequested(response.name, Map<String, Object?>.from(response.args));
+        } else if (response is ParallelFunctionCallResponse) {
+          // Parallel calls collapse to ONE event: first + extraCallCount (FR-006/FR-024 handled by
+          // the controller).
+          sawToolCall = true;
+          filter.discardOnToolCall();
+          _awaitingToolResult = true;
+          final calls = response.calls;
+          final first = calls.first;
+          yield ToolCallRequested(
+            first.name,
+            Map<String, Object?>.from(first.args),
+            extraCallCount: calls.length - 1,
+          );
         }
-        // ThinkingResponse / FunctionCallResponse are ignored this slice (text + image + audio).
       }
 
-      // Clean completion: the native session now holds history + this exchange. (Skipped when the
-      // consumer cancelled mid-stream — cancellation stops this generator at the yield — or when
-      // stop()/close()/loadModel() bumped the epoch while the stream was draining.)
-      if (epoch == _sessionEpoch) {
+      if (!sawToolCall) {
+        // Text-terminated turn: a withheld `{`-prefix was a false positive — flush it verbatim.
+        final flushed = filter.flushOnText();
+        if (flushed.isNotEmpty) {
+          reply.write(flushed);
+          yield TextDelta(flushed);
+        }
+      }
+
+      // Commit warm fingerprints ONLY on a clean, tool-free text turn (a tool turn leaves the
+      // session dirty so the next send replays fully).
+      if (epoch == _sessionEpoch && !sawToolCall) {
         _sessionTurns = [
           ...fingerprints,
           _TurnFingerprint(
@@ -257,18 +309,62 @@ class FlutterGemmaService implements GemmaService {
       }
     } catch (error) {
       if (error is StateError) rethrow;
-      // Map native failures on an audio-bearing CURRENT PROMPT to the typed, user-facing failure
-      // (003 guarantee 15 — narrowly scoped per 002 audit L4: errors on turns that merely replay
-      // audio history propagate unchanged so they aren't misattributed to a clip).
       if (audio != null) {
         throw AudioProcessingException('could not process the audio', cause: error);
       }
-      // Map image decode/validation/resize/OOM failures to a typed, user-facing failure (FR-020,
-      // Principle V). Text-only failures propagate unchanged so the chat controller keeps the
-      // partial reply as stopped-partial.
       if (involvesImage) {
         throw ImageProcessingException('could not process the image', cause: error);
       }
+      rethrow;
+    }
+  }
+
+  @override
+  Stream<GenerationEvent> resumeWithToolResult({
+    required String toolName,
+    required Map<String, Object?> result,
+  }) async* {
+    final chat = _chat;
+    if (!_loaded || chat == null) {
+      throw StateError('resumeWithToolResult() called with no model loaded');
+    }
+    // Guarantee 22 — resume is valid exactly once, only after a tool-call-terminated stream.
+    if (!_awaitingToolResult) {
+      throw StateError('resumeWithToolResult() called outside an in-flight tool turn');
+    }
+    _awaitingToolResult = false;
+    // A tool turn leaves the session dirty: the next send does a full replay (the call+response are
+    // now in the native context but not in the warm fingerprints — correctness wins).
+    _sessionTurns = null;
+
+    final filter = LeakFilter(active: _supportsFunctionCalls);
+    try {
+      // The plugin reaches the model as a user-role `<tool_response>` block on Android/.litertlm.
+      await chat.addQuery(Message.toolResponse(toolName: toolName, response: result));
+      await for (final response in chat.generateChatResponseAsync()) {
+        if (response is TextResponse) {
+          final emit = filter.process(response.token);
+          if (emit.isNotEmpty) yield TextDelta(emit);
+        } else if (response is FunctionCallResponse) {
+          // A SECOND call on resume is surfaced, not executed (the controller chips-and-skips it,
+          // FR-006/FR-024).
+          filter.discardOnToolCall();
+          yield ToolCallRequested(response.name, Map<String, Object?>.from(response.args));
+        } else if (response is ParallelFunctionCallResponse) {
+          filter.discardOnToolCall();
+          final calls = response.calls;
+          final first = calls.first;
+          yield ToolCallRequested(
+            first.name,
+            Map<String, Object?>.from(first.args),
+            extraCallCount: calls.length - 1,
+          );
+        }
+      }
+      final flushed = filter.flushOnText();
+      if (flushed.isNotEmpty) yield TextDelta(flushed);
+    } catch (error) {
+      if (error is StateError) rethrow;
       rethrow;
     }
   }
@@ -283,9 +379,24 @@ class FlutterGemmaService implements GemmaService {
     return true;
   }
 
-  /// Map a history [turn] to the plugin's `Message`, carrying its image or clip when present
-  /// (003 guarantee 16: audio-bearing history replays via `Message.withAudio`/`audioOnly` so
-  /// follow-ups keep referring to the clip).
+  /// Expand one history [turn] into the plugin message(s) that replay it (guarantee 23). A tool
+  /// turn becomes the call+response PAIR; everything else is a single message.
+  Iterable<Message> _replayMessages(ChatTurn turn) {
+    if (turn.isTool) {
+      // Error/skipped rows carry their `{error: …}` result so the model remembers failures
+      // honestly (data-model §3). The raw-JSON reconstruction is the pure, unit-tested helper.
+      return [
+        Message.toolCall(
+            text: reconstructToolCallJson(turn.toolName!, turn.toolArgs ?? const {})),
+        Message.toolResponse(
+            toolName: turn.toolName!, response: turn.toolResult ?? const {}),
+      ];
+    }
+    return [_toPluginMessage(turn)];
+  }
+
+  /// Map a non-tool history [turn] to the plugin's `Message`, carrying its image or clip when
+  /// present (003 guarantee 16).
   Message _toPluginMessage(ChatTurn turn) {
     final image = turn.image;
     final audio = turn.audio;
@@ -305,7 +416,6 @@ class FlutterGemmaService implements GemmaService {
   }
 
   /// Build the current prompt message: text-only, media+text, or media-only (empty text, FR-004).
-  /// At most one of [image]/[audio] is non-null (gated above).
   Message _promptMessage(String prompt, ImageInput? image, AudioInput? audio) {
     if (audio != null) {
       if (prompt.isEmpty) {
@@ -328,6 +438,7 @@ class FlutterGemmaService implements GemmaService {
     // here, so mark dirty: the next send resyncs with a full replay.
     _sessionEpoch++;
     _sessionTurns = null;
+    _awaitingToolResult = false;
     await _chat?.stopGeneration();
   }
 
@@ -335,6 +446,8 @@ class FlutterGemmaService implements GemmaService {
   Future<void> close() async {
     _sessionEpoch++;
     _sessionTurns = null;
+    _awaitingToolResult = false;
+    _supportsFunctionCalls = false;
     try {
       await _model?.close();
     } finally {
@@ -347,8 +460,7 @@ class FlutterGemmaService implements GemmaService {
 
 /// Cheap identity of one turn the native session has ingested: role + exact text + image/audio
 /// byte LENGTH (stored media files are write-once, so same path ⇒ same length ⇒ same media —
-/// without retaining or comparing megabytes of bytes, Principle VIII). `audioByteLength` keeps a
-/// warm session from being wrongly matched across differing clips (003 guarantee 16).
+/// without retaining or comparing megabytes of bytes, Principle VIII).
 class _TurnFingerprint {
   const _TurnFingerprint({
     required this.isUser,
@@ -394,10 +506,8 @@ bool _logFilterInstalled = false;
 
 /// Silence flutter_gemma's hot-path log spam: the plugin `debugPrint`s several lines PER TOKEN
 /// while streaming, and dumps the ENTIRE accumulated history per ingested chunk — in release
-/// builds too (`debugPrint` is not compiled out). At ~10 tokens/s that floods the platform log
-/// channel exactly while frames are being raced. Installed once from `main()`; everything not
-/// matching the plugin's known prefixes passes through untouched (our own `GemmaService:` logs
-/// keep working). Plugin knowledge stays confined to this seam (Principle VII).
+/// builds too (`debugPrint` is not compiled out). Installed once from `main()`; everything not
+/// matching the plugin's known prefixes passes through untouched.
 void installGemmaLogFilter() {
   if (_logFilterInstalled) return;
   _logFilterInstalled = true;
@@ -408,8 +518,7 @@ void installGemmaLogFilter() {
   };
 }
 
-/// Prefixes of flutter_gemma 0.15.3's per-token / per-chunk log lines (see the plugin's
-/// `InferenceChat.generateChatResponseAsync` and `MobileInferenceModelSession.addQueryChunk`).
+/// Prefixes of flutter_gemma 0.15.3's per-token / per-chunk log lines.
 bool _isGemmaLogNoise(String message) =>
     message.startsWith('InferenceChat:') ||
     message.startsWith('[MobileSession') ||

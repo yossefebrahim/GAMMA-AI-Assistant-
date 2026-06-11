@@ -88,7 +88,7 @@ void main() {
 
     final conversations = await db.select(db.conversations).get();
     expect(conversations.single.title, 'v2 chat');
-    expect(db.schemaVersion, 3);
+    expect(db.schemaVersion, 4);
   });
 
   test('foreign keys stay enforced after the upgrade (cascade intact)', () async {

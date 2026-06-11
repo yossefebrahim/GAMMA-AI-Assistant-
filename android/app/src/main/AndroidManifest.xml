@@ -28,6 +28,12 @@
          its own manifest too; the app manifest is the audited surface. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
 
+    <!-- Function calling (004): the `set_timer` tool fires AlarmClock.ACTION_SET_TIMER via
+         android_intent_plus (R4, spec Q2). SET_ALARM is a NORMAL permission (auto-granted, no
+         runtime prompt) authorizing the clock-app hand-off. The intent is an on-device OS hand-off,
+         not network egress — no new network/storage surface (Principle I). -->
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM"/>
+
     <application
         android:label="ai_assistant"
         android:name="${applicationName}"
@@ -92,6 +98,13 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- Function calling (004 R4): Android 11+ package visibility — without this <queries>
+             entry, resolving AlarmClock.ACTION_SET_TIMER (the `set_timer` tool's hand-off) fails
+             even with SET_ALARM granted. The handler maps an unresolved intent to a structured
+             `no clock app available` error (FR-015). -->
+        <intent>
+            <action android:name="android.intent.action.SET_TIMER"/>
         </intent>
     </queries>
 </manifest>

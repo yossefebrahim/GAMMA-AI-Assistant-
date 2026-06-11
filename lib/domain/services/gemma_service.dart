@@ -1,7 +1,9 @@
 import 'package:ai_assistant/domain/entities/audio_input.dart';
 import 'package:ai_assistant/domain/entities/chat_turn.dart';
+import 'package:ai_assistant/domain/entities/generation_event.dart';
 import 'package:ai_assistant/domain/entities/image_input.dart';
 import 'package:ai_assistant/domain/entities/model_capabilities.dart';
+import 'package:ai_assistant/domain/entities/tool_spec.dart';
 
 /// Thrown when a model fails to load (e.g. backend init / OOM).
 class ModelLoadException implements Exception {
@@ -58,9 +60,17 @@ abstract interface class GemmaService {
   /// the active model's declared [capabilities] (e.g. enable vision when `capabilities.image`,
   /// audio when `capabilities.audio` — Principle III). Releases any previously-loaded model first
   /// so exactly ONE model is active (Principle VIII). Throws [ModelLoadException] on failure.
+  ///
+  /// FUNCTION CALLING (004): [tools] declarations ride model load, STRUCTURALLY COUPLED to the
+  /// capability — passing a non-empty [tools] while `capabilities.functionCalling == false` throws
+  /// [StateError] synchronously (guarantee 18 — the spike's silent-trap closure: the plugin's FFI
+  /// path injects declarations on `tools.isNotEmpty` ALONE, so a mismatch silently no-ops or spills
+  /// raw JSON). The seam derives `supportsFunctionCalls`, `tools`, and the tool system instruction
+  /// from ONE source — there is no representable state with one but not the others.
   Future<void> loadModel(
     String filePath, {
     ModelCapabilities capabilities = ModelCapabilities.textOnly,
+    List<ToolSpec> tools = const [],
   });
 
   /// Generate a reply for [prompt] given prior [history], optionally grounded in [image] or
@@ -83,11 +93,30 @@ abstract interface class GemmaService {
   ///    spec Q3).
   ///
   /// The caller must gate on [capabilities] first.
-  Stream<String> generate({
+  ///
+  /// FUNCTION CALLING (004 R2, guarantees 19–21): the stream yields sealed [GenerationEvent]s
+  /// rather than bare tokens. [TextDelta]s carry prose (the raw tool-call JSON leak is suppressed
+  /// at the seam, guarantee 20 — never crosses as a delta); a [ToolCallRequested] is always the
+  /// FINAL event of its stream (the plugin yields it at end-of-stream). With
+  /// `functionCalling == false` the stream is byte-parity [TextDelta]s only (guarantee 19).
+  Stream<GenerationEvent> generate({
     required List<ChatTurn> history,
     required String prompt,
     ImageInput? image,
     AudioInput? audio,
+  });
+
+  /// Complete the ONE allowed tool round trip of the current turn (004, guarantee 22): send the
+  /// plugin the tool [result] for [toolName] and re-invoke generation on the same chat, returning
+  /// the same [GenerationEvent] stream for the turn's completion. [result] is the success payload
+  /// OR `{error: reason}` so the model can acknowledge a failure honestly.
+  ///
+  /// Valid exactly once, only after a [ToolCallRequested]-terminated [generate] stream of the same
+  /// turn; otherwise throws [StateError]. A SECOND [ToolCallRequested] on the resumed stream is
+  /// surfaced (for the controller to chip-and-skip, FR-006/FR-024), not executed here.
+  Stream<GenerationEvent> resumeWithToolResult({
+    required String toolName,
+    required Map<String, Object?> result,
   });
 
   /// Halt the in-flight generation immediately (FR-014). Idempotent / safe if idle.

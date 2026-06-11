@@ -74,7 +74,7 @@ void main() {
     await sending;
 
     final assistant =
-        (await repo().loadTurns(conversationId!)).firstWhere((m) => m.role == MessageRole.assistant);
+        (await repo().loadTurns(conversationId)).firstWhere((m) => m.role == MessageRole.assistant);
     expect(assistant.status, MessageStatus.stoppedPartial);
     expect(assistant.content, isNotEmpty);
     expect(assistant.content.length, lessThan('aabbccddee'.length));
