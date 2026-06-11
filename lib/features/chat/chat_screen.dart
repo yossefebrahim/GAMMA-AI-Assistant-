@@ -9,6 +9,7 @@ import 'package:ai_assistant/features/chat/chat_providers.dart';
 import 'package:ai_assistant/features/chat/recording_controller.dart';
 import 'package:ai_assistant/features/chat/widgets/composer.dart';
 import 'package:ai_assistant/features/chat/widgets/message_bubble.dart';
+import 'package:ai_assistant/features/chat/widgets/tool_chip.dart';
 import 'package:ai_assistant/infrastructure/gemma/flutter_gemma_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -268,7 +269,14 @@ class _MessageList extends ConsumerWidget {
             vertical: AppSpacing.s12,
           ),
           itemCount: list.length,
-          itemBuilder: (context, index) => MessageBubble(message: list[index]),
+          itemBuilder: (context, index) {
+            final message = list[index];
+            // A tool invocation renders as a monochrome chip; everything else as a bubble (FR-010 —
+            // chips render regardless of the active model's capabilities).
+            return message.isTool
+                ? ToolChip(message: message)
+                : MessageBubble(message: message);
+          },
         );
       },
     );

@@ -20,10 +20,20 @@ abstract final class ModelCatalog {
   /// grounding on the A34, GPU backend — specs/003-audio-input/spike-findings.md).
   static const bool supportsAudio = true;
 
+  /// Whether the default model can call local tools — DATA, same flow as [supportsImage]/
+  /// [supportsAudio] (Principle III, 004 R5). Verified empirically for Gemma 4 E2B by the 004 Phase
+  /// 0 spike (83.3% no-instruction correct-call floor, 0 hallucinated tools, GPU — GATE PASSED,
+  /// specs/004-function-calling/spike-findings.md). Drives tool declaration to the model AND the
+  /// flag-off byte-parity regression (SC-007).
+  static const bool supportsFunctionCalling = true;
+
   /// The active model's capabilities as a single data value (Principle III). Passed into
   /// `GemmaService.loadModel` so the seam enables the matching modalities and reports them back.
-  static const ModelCapabilities capabilities =
-      ModelCapabilities(image: supportsImage, audio: supportsAudio);
+  static const ModelCapabilities capabilities = ModelCapabilities(
+    image: supportsImage,
+    audio: supportsAudio,
+    functionCalling: supportsFunctionCalling,
+  );
 
   /// Human label, shown lowercased per the design voice: `model ( gemma 4 e2b )`.
   static const String displayName = 'gemma 4 e2b';

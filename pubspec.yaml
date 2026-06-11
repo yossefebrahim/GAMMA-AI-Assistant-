@@ -68,6 +68,16 @@ dependencies:
   # AudioPreviewPlayer seam; imported ONLY in lib/infrastructure/media/.
   audioplayers: ^6.7.0
 
+  # Battery level for the `get_device_info` tool (004 R4). flutter-community Plus family (same as
+  # device_info_plus already in the stack). Confined behind the DeviceInfoToolService seam;
+  # imported ONLY in lib/infrastructure/tools/ (enforced by tool/check_plugin_seam.sh, Principle VII).
+  battery_plus: ^7.0.0
+
+  # ACTION_SET_TIMER skip-UI hand-off for the `set_timer` tool (004 R4, spec Q2). Plus family.
+  # Confined behind the TimerIntentService seam; imported ONLY in lib/infrastructure/tools/.
+  # Manifest gains SET_ALARM + a <queries> entry for the intent (Android 11+ package visibility).
+  android_intent_plus: ^6.0.0
+
   # App-private documents directory (R2/R3).
   path_provider: ^2.1.5
 
@@ -91,8 +101,10 @@ dev_dependencies:
   # (003 T020). Already resolved transitively via flutter_test; pinned for the direct import.
   fake_async: ^1.3.0
 
-  # THROWAWAY (004 Phase 0 spike) — the on-device function-calling spike runs via `flutter drive`
-  # (test_driver/integration_test.dart). Remove with the spike.
+  # Kept for the 004 RELIABILITY GATE (quickstart §Reliability gate, T057): the 20-prompt
+  # correct-call suite runs on-device via `flutter drive` (test_driver/integration_test.dart) —
+  # NEVER `flutter test integration_test/...`, which uninstalls the app and wipes the 2.4 GB model
+  # + DB. The Phase 0 spike test was removed; this harness stays for the shipped-pipeline gate.
   integration_test:
     sdk: flutter
 

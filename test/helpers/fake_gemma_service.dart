@@ -2,74 +2,75 @@ import 'dart:async';
 
 import 'package:ai_assistant/domain/entities/audio_input.dart';
 import 'package:ai_assistant/domain/entities/chat_turn.dart';
+import 'package:ai_assistant/domain/entities/generation_event.dart';
 import 'package:ai_assistant/domain/entities/image_input.dart';
 import 'package:ai_assistant/domain/entities/model_capabilities.dart';
+import 'package:ai_assistant/domain/entities/tool_spec.dart';
 import 'package:ai_assistant/domain/services/gemma_service.dart';
 
 /// In-memory [GemmaService] for unit tests (contract: gemma_service.md "Test double" + the 003
-/// audio extensions).
+/// audio and 004 function-calling extensions).
 ///
-/// Emits a scripted list of deltas with controllable timing, honors [stop] by ending the stream
-/// early (so partial-retention / FR-014 can be tested), records the image/audio passed to
-/// [generate] and the media carried on [history] turns (so FR-015/FR-016 + 003 FR-017 context
-/// replay is assertable), can be scripted to fail with [ImageProcessingException] (FR-020) or
+/// Emits a scripted sequence of [GenerationEvent]s with controllable timing, honors [stop] by
+/// ending the stream early (FR-014), records the image/audio/history media passed to [generate]
+/// (FR-015/FR-016 + 003 FR-017), can be scripted to fail with [ImageProcessingException] (FR-020) or
 /// [AudioProcessingException] (003 FR-022), and asserts no [generate] after [close].
 ///
-/// It models the seam's gates FOR REAL (003 contract, closing 002 audit L6): `generate(audio:)`
-/// while `capabilities.audio` is false throws [StateError] (guarantee 13 — the FFI silent-drop
-/// guard), and passing both media throws [StateError] (guarantee 14).
+/// It models the seam's gates FOR REAL: `generate(audio:)` while `capabilities.audio` is false
+/// throws [StateError] (003 guarantee 13), both media throws [StateError] (guarantee 14),
+/// `loadModel(tools:)` while `!capabilities.functionCalling` throws [StateError] (004 guarantee
+/// 18), and `resumeWithToolResult` outside an in-flight tool turn throws [StateError] (guarantee
+/// 22).
 class FakeGemmaService implements GemmaService {
   FakeGemmaService({this.capabilitiesData = const ModelCapabilities(image: true, audio: true)});
 
-  /// Capabilities returned once loaded. Default mirrors the catalog (image+audio true — 003
-  /// contract); pass `ModelCapabilities.textOnly` (or audio:false) for gating tests.
+  /// Capabilities returned once loaded. Default mirrors 002/003 (image+audio true); pass a value
+  /// with `functionCalling: true` for tool tests, or `ModelCapabilities.textOnly` for gating tests.
   ModelCapabilities capabilitiesData;
 
-  /// When true, [loadModel] throws [ModelLoadException] (backend-init / OOM simulation).
   bool throwOnLoad = false;
-
-  /// When true, [generate] surfaces an [ImageProcessingException] on the stream (FR-020 path).
   bool throwImageProcessing = false;
-
-  /// When true, [generate] surfaces an [AudioProcessingException] on the stream (003 FR-022
-  /// path — scripted unprocessable clip / OOM-ish native failure).
   bool throwAudioProcessing = false;
-
-  /// When set, [generate] surfaces this generic error on the stream — the L4 regression lock:
-  /// a failure on a turn that does NOT carry current-prompt audio must reach the caller
-  /// UN-remapped (003 guarantee 15), never as an audio/image banner.
   Object? scriptedStreamError;
 
-  /// Deltas [generate] will emit, in order.
+  /// Back-compat (001–003): bare text deltas [generate] will emit when [scriptedEvents] is unset.
   List<String> scriptedDeltas = <String>[];
 
-  /// Delay between scripted deltas (default: emit synchronously).
-  Duration deltaInterval = Duration.zero;
+  /// 004: the exact [GenerationEvent] sequence [generate] emits. When non-null this takes
+  /// precedence over [scriptedDeltas] — script `[ToolCallRequested(...)]`, or
+  /// `[TextDelta('hm '), ToolCallRequested(...)]`, etc.
+  List<GenerationEvent>? scriptedEvents;
 
-  /// When set, [stop] emits this one final delta BEFORE closing the stream — simulating a token the
-  /// plugin produced concurrently with `stopGeneration()`. Lets a test prove the caller retains it
-  /// (FR-014) rather than dropping it.
+  /// 004: the [GenerationEvent] sequence [resumeWithToolResult] emits (the final reply, or a SECOND
+  /// `ToolCallRequested` for the FR-024 test).
+  List<GenerationEvent> resumeEvents = <GenerationEvent>[];
+
+  Duration deltaInterval = Duration.zero;
   String? trailingDeltaAfterStop;
+
+  /// Test hook fired synchronously right after each event is added to the stream — lets a
+  /// controller test request stop at a PRECISE point (e.g. after a `ToolCallRequested` is delivered
+  /// but before the dispatch check, to exercise the `skipped` path deterministically).
+  void Function(GenerationEvent event)? onEmit;
 
   // --- observed state, for assertions ---
   String? loadedPath;
   ModelCapabilities? loadedCapabilities;
+
+  /// The tool specs passed to the last [loadModel] (004 — the gating test asserts empty vs. full).
+  List<ToolSpec>? loadedTools;
+
   List<ChatTurn>? lastHistory;
   String? lastPrompt;
-
-  /// The image passed with the current prompt on the last [generate] call (FR-012).
   ImageInput? lastImage;
-
-  /// The clip passed with the current prompt on the last [generate] call (003 FR-013).
   AudioInput? lastAudio;
-
-  /// The image (or null) carried by each [history] turn on the last [generate] call, in order
-  /// (FR-015/FR-016 — asserts a prior image is replayed as context).
   List<ImageInput?>? lastHistoryImages;
-
-  /// The clip (or null) carried by each [history] turn on the last [generate] call, in order
-  /// (003 FR-017 — asserts a prior clip is replayed as context).
   List<AudioInput?>? lastHistoryAudio;
+
+  /// 004: the payload handed to the last [resumeWithToolResult] (round-trip assertion).
+  String? lastResumeToolName;
+  Map<String, Object?>? lastResumeResult;
+  int resumeCount = 0;
 
   int loadCount = 0;
   int stopCount = 0;
@@ -78,7 +79,8 @@ class FakeGemmaService implements GemmaService {
   bool _loaded = false;
   bool _closed = false;
   bool _stopped = false;
-  StreamController<String>? _controller;
+  bool _awaitingToolResult = false;
+  StreamController<GenerationEvent>? _controller;
 
   @override
   bool get isLoaded => _loaded;
@@ -90,12 +92,22 @@ class FakeGemmaService implements GemmaService {
   }
 
   @override
-  Future<void> loadModel(String filePath, {ModelCapabilities? capabilities}) async {
+  Future<void> loadModel(
+    String filePath, {
+    ModelCapabilities? capabilities,
+    List<ToolSpec> tools = const [],
+  }) async {
     if (throwOnLoad) {
       throw const ModelLoadException('fake load failure');
     }
+    final caps = capabilities ?? capabilitiesData;
+    // Guarantee 18 (004): tool declarations without the capability are unrepresentable.
+    if (tools.isNotEmpty && !caps.functionCalling) {
+      throw StateError('loadModel(tools:) requires capabilities.functionCalling');
+    }
     loadedPath = filePath;
     loadedCapabilities = capabilities;
+    loadedTools = tools;
     if (capabilities != null) capabilitiesData = capabilities;
     loadCount++;
     _loaded = true;
@@ -103,7 +115,7 @@ class FakeGemmaService implements GemmaService {
   }
 
   @override
-  Stream<String> generate({
+  Stream<GenerationEvent> generate({
     required List<ChatTurn> history,
     required String prompt,
     ImageInput? image,
@@ -112,39 +124,53 @@ class FakeGemmaService implements GemmaService {
     if (_closed) {
       throw StateError('generate() called after close()');
     }
-    // Guarantee 14 (003): one attachment per message — audio XOR image (spec Q3).
     if (image != null && audio != null) {
       throw StateError('generate() called with both an image and audio');
     }
-    // Guarantee 13 (003, closes 002 audit L6): the ungated-audio gate is REAL in the fake — the
-    // plugin's FFI path silently drops ungated audio, so the seam (and this double) must throw.
     if (audio != null && !capabilitiesData.audio) {
       throw StateError('generate(audio:) called while the model does not support audio');
     }
     lastHistory = List<ChatTurn>.unmodifiable(history);
-    lastHistoryImages =
-        List<ImageInput?>.unmodifiable(history.map((turn) => turn.image));
-    lastHistoryAudio =
-        List<AudioInput?>.unmodifiable(history.map((turn) => turn.audio));
+    lastHistoryImages = List<ImageInput?>.unmodifiable(history.map((turn) => turn.image));
+    lastHistoryAudio = List<AudioInput?>.unmodifiable(history.map((turn) => turn.audio));
     lastPrompt = prompt;
     lastImage = image;
     lastAudio = audio;
+    return _emit(scriptedEvents ?? [for (final d in scriptedDeltas) TextDelta(d)]);
+  }
+
+  @override
+  Stream<GenerationEvent> resumeWithToolResult({
+    required String toolName,
+    required Map<String, Object?> result,
+  }) {
+    if (_closed) {
+      throw StateError('resumeWithToolResult() called after close()');
+    }
+    // Guarantee 22: resume is valid only after a tool-call-terminated stream of the same turn.
+    if (!_awaitingToolResult) {
+      throw StateError('resumeWithToolResult() called outside an in-flight tool turn');
+    }
+    _awaitingToolResult = false;
+    resumeCount++;
+    lastResumeToolName = toolName;
+    lastResumeResult = result;
+    return _emit(resumeEvents);
+  }
+
+  Stream<GenerationEvent> _emit(List<GenerationEvent> events) {
     _stopped = false;
-    final controller = StreamController<String>();
+    final controller = StreamController<GenerationEvent>();
     _controller = controller;
 
     Future<void> pump() async {
       if (throwImageProcessing) {
-        controller.addError(
-          const ImageProcessingException('fake image processing failure'),
-        );
+        controller.addError(const ImageProcessingException('fake image processing failure'));
         if (!controller.isClosed) await controller.close();
         return;
       }
       if (throwAudioProcessing) {
-        controller.addError(
-          const AudioProcessingException('fake audio processing failure'),
-        );
+        controller.addError(const AudioProcessingException('fake audio processing failure'));
         if (!controller.isClosed) await controller.close();
         return;
       }
@@ -153,13 +179,16 @@ class FakeGemmaService implements GemmaService {
         if (!controller.isClosed) await controller.close();
         return;
       }
-      for (final delta in scriptedDeltas) {
+      for (final event in events) {
         if (_stopped || controller.isClosed) break;
         if (deltaInterval > Duration.zero) {
           await Future<void>.delayed(deltaInterval);
         }
         if (_stopped || controller.isClosed) break;
-        controller.add(delta);
+        controller.add(event);
+        // After yielding a tool call, the seam permits exactly one resume (guarantee 22).
+        if (event is ToolCallRequested) _awaitingToolResult = true;
+        onEmit?.call(event);
       }
       if (!controller.isClosed) await controller.close();
     }
@@ -174,9 +203,8 @@ class FakeGemmaService implements GemmaService {
     _stopped = true;
     final controller = _controller;
     if (controller != null && !controller.isClosed) {
-      // Deliver one final, already-produced token concurrently with stop (FR-014 path).
       if (trailingDeltaAfterStop != null) {
-        controller.add(trailingDeltaAfterStop!);
+        controller.add(TextDelta(trailingDeltaAfterStop!));
       }
       await controller.close();
     }
@@ -187,6 +215,7 @@ class FakeGemmaService implements GemmaService {
     closeCount++;
     _loaded = false;
     _closed = true;
+    _awaitingToolResult = false;
     final controller = _controller;
     if (controller != null && !controller.isClosed) {
       await controller.close();

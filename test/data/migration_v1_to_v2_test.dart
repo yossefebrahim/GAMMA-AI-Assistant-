@@ -71,7 +71,7 @@ void main() {
     final conversations = await db.select(db.conversations).get();
     expect(conversations.single.title, 'old chat');
 
-    expect(db.schemaVersion, 3);
+    expect(db.schemaVersion, 4);
   });
 
   test('fresh installs are created with the image columns (onCreate)', () async {

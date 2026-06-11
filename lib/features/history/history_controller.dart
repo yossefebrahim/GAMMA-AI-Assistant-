@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:ai_assistant/data/repositories/drift_conversation_repository.dart';
 import 'package:ai_assistant/domain/entities/conversation.dart';
 import 'package:ai_assistant/features/chat/chat_controller.dart';
@@ -13,7 +15,11 @@ final conversationsProvider = StreamProvider.autoDispose<List<Conversation>>((re
 /// [conversationsProvider]; this drives new/open/delete and keeps the chat surface in sync.
 class HistoryController extends Notifier<void> {
   @override
-  void build() {}
+  void build() {
+    // Sweep stale `running` tool rows when the history surface opens too (data-model §4) — a
+    // reopened conversation must never render an in-flight chip. Fire-and-forget.
+    unawaited(ref.read(conversationRepositoryProvider).sweepStaleToolInvocations());
+  }
 
   /// Start a fresh, empty thread — existing conversations are preserved (FR-019).
   void newConversation() {

@@ -10,6 +10,8 @@
 #                                                  / MediaPermissionService — 002 R2/R3)
 #   * package:record / audioplayers             → ONLY lib/infrastructure/media/  (AudioRecorderService
 #                                                  / AudioPreviewPlayer — 003 R2/R4)
+#   * package:battery_plus / android_intent_plus → ONLY lib/infrastructure/tools/ (DeviceInfoToolService
+#                                                  / TimerIntentService — 004 R4)
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -46,8 +48,12 @@ check_seam "record|audioplayers" "lib/infrastructure/media/" \
   "record/audioplayers" \
   "depend on lib/domain/services/audio_recorder_service.dart or audio_preview_player.dart instead."
 
+check_seam "battery_plus|android_intent_plus" "lib/infrastructure/tools/" \
+  "battery_plus/android_intent_plus" \
+  "depend on the DeviceInfoToolService / TimerIntentService seams in lib/infrastructure/tools/ instead (004 R4)."
+
 if [[ "$status" -ne 0 ]]; then
   exit 1
 fi
 
-echo "✓ Plugin seams intact — flutter_gemma → lib/infrastructure/gemma/; image_picker/permission_handler/record/audioplayers → lib/infrastructure/media/"
+echo "✓ Plugin seams intact — flutter_gemma → lib/infrastructure/gemma/; image_picker/permission_handler/record/audioplayers → lib/infrastructure/media/; battery_plus/android_intent_plus → lib/infrastructure/tools/"
