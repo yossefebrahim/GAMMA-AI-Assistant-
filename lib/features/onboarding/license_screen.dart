@@ -27,19 +27,27 @@ class _LicenseScreenState extends ConsumerState<LicenseScreen> {
   bool _accepted = false;
 
   Future<void> _continue() async {
-    final outcome =
-        await ref.read(onboardingControllerProvider.notifier).acknowledgeAndPreflight();
+    final outcome = await ref
+        .read(onboardingControllerProvider.notifier)
+        .acknowledgeAndPreflight();
     if (!mounted) return;
     final navigator = Navigator.of(context);
     if (outcome.eligible) {
       // Pass the soft-warn flag so the download screen can show the "below recommended 8 GB"
       // notice (R4) — informational, never a block.
-      unawaited(navigator.pushReplacementNamed(AppRoutes.download, arguments: outcome.softWarn));
+      unawaited(
+        navigator.pushReplacementNamed(
+          AppRoutes.download,
+          arguments: outcome.softWarn,
+        ),
+      );
     } else {
-      unawaited(navigator.pushReplacementNamed(
-        AppRoutes.preflightBlocked,
-        arguments: outcome.reason ?? IneligibleReason.insufficientMemory,
-      ));
+      unawaited(
+        navigator.pushReplacementNamed(
+          AppRoutes.preflightBlocked,
+          arguments: outcome.reason ?? IneligibleReason.insufficientMemory,
+        ),
+      );
     }
   }
 
@@ -50,7 +58,12 @@ class _LicenseScreenState extends ConsumerState<LicenseScreen> {
     final isChecking = ref.watch(onboardingControllerProvider);
 
     return Scaffold(
-      appBar: AppBar(title: Text(AppText.spec('model license'), style: theme.textTheme.labelSmall)),
+      appBar: AppBar(
+        title: Text(
+          AppText.spec('model license'),
+          style: theme.textTheme.labelSmall,
+        ),
+      ),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(AppSpacing.heroPadding),
@@ -58,7 +71,10 @@ class _LicenseScreenState extends ConsumerState<LicenseScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: AppSpacing.s8),
-              Text('the model ( ${'gemma 4 e2b'} )', style: theme.textTheme.titleLarge),
+              Text(
+                'the model ( ${'gemma 4 e2b'} )',
+                style: theme.textTheme.titleLarge,
+              ),
               const SizedBox(height: AppSpacing.s16),
               Expanded(
                 child: SingleChildScrollView(
@@ -66,14 +82,18 @@ class _LicenseScreenState extends ConsumerState<LicenseScreen> {
                     'the default model is provided under its own license. it is downloaded once and '
                     'then runs entirely on your device. by continuing you acknowledge the model '
                     'license and that the one-time download will use your network connection.',
-                    style: theme.textTheme.bodyLarge?.copyWith(color: colors.textSecondary),
+                    style: theme.textTheme.bodyLarge?.copyWith(
+                      color: colors.textSecondary,
+                    ),
                   ),
                 ),
               ),
               CheckboxListTile(
                 key: LicenseScreen.checkboxKey,
                 value: _accepted,
-                onChanged: isChecking ? null : (value) => setState(() => _accepted = value ?? false),
+                onChanged: isChecking
+                    ? null
+                    : (value) => setState(() => _accepted = value ?? false),
                 controlAffinity: ListTileControlAffinity.leading,
                 contentPadding: EdgeInsets.zero,
                 activeColor: colors.textPrimary,

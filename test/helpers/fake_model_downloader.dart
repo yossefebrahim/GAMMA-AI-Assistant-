@@ -28,6 +28,13 @@ class FakeModelDownloader implements ModelDownloader {
   bool _canceled = false;
   StreamController<DownloadProgress>? _controller;
 
+  /// Pretend the model is already on disk from a previous install — exercises the reinstall
+  /// fast-path (the file survived an uninstall, so no re-download).
+  void presetInstalled(String path, {int? size}) {
+    _installedPath = path;
+    sizeBytes = size;
+  }
+
   @override
   Stream<DownloadProgress> download(String url) {
     lastUrl = url;

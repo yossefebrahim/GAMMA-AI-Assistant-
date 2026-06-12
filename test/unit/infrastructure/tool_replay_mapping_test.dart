@@ -17,7 +17,10 @@ void main() {
   });
 
   test('args are embedded as a JSON object, not a string', () {
-    final json = reconstructToolCallJson('set_timer', const {'seconds': 300, 'label': 'tea'});
+    final json = reconstructToolCallJson('set_timer', const {
+      'seconds': 300,
+      'label': 'tea',
+    });
     final decoded = jsonDecode(json) as Map<String, Object?>;
     final call = (decoded['tool_calls'] as List).single as Map<String, Object?>;
     final function = call['function'] as Map<String, Object?>;
@@ -27,11 +30,17 @@ void main() {
     expect(function['arguments'], {'seconds': 300, 'label': 'tea'});
   });
 
-  test('error/skipped replay carries the {error: …} result through toolResponse semantics', () {
-    // The tool-call half is the same shape regardless of outcome; the RESULT half (Message
-    // .toolResponse) carries {error: …} for error/skipped rows — asserted here as the payload the
-    // seam passes through verbatim.
-    const errorResult = {'error': 'clipboard empty or not text'};
-    expect(jsonEncode(errorResult), '{"error":"clipboard empty or not text"}');
-  });
+  test(
+    'error/skipped replay carries the {error: …} result through toolResponse semantics',
+    () {
+      // The tool-call half is the same shape regardless of outcome; the RESULT half (Message
+      // .toolResponse) carries {error: …} for error/skipped rows — asserted here as the payload the
+      // seam passes through verbatim.
+      const errorResult = {'error': 'clipboard empty or not text'};
+      expect(
+        jsonEncode(errorResult),
+        '{"error":"clipboard empty or not text"}',
+      );
+    },
+  );
 }

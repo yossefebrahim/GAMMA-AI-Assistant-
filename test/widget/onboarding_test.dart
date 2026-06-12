@@ -31,24 +31,27 @@ void main() {
     );
   }
 
-  testWidgets('welcome is dark and explains on-device privacy first (FR-001/FR-023, SC-010)',
-      (tester) async {
-    final container = makeContainer();
-    addTearDown(container.dispose);
+  testWidgets(
+    'welcome is dark and explains on-device privacy first (FR-001/FR-023, SC-010)',
+    (tester) async {
+      final container = makeContainer();
+      addTearDown(container.dispose);
 
-    await tester.pumpWidget(app(container, home: const WelcomeScreen()));
+      await tester.pumpWidget(app(container, home: const WelcomeScreen()));
 
-    expect(find.byKey(WelcomeScreen.explainerKey), findsOneWidget);
-    expect(find.text('get started'), findsOneWidget);
-    final context = tester.element(find.byType(Scaffold));
-    expect(Theme.of(context).brightness, Brightness.dark);
-  });
+      expect(find.byKey(WelcomeScreen.explainerKey), findsOneWidget);
+      expect(find.text('get started'), findsOneWidget);
+      final context = tester.element(find.byType(Scaffold));
+      expect(Theme.of(context).brightness, Brightness.dark);
+    },
+  );
 
   testWidgets('license acknowledgment gates the download (Q1)', (tester) async {
     final container = makeContainer(
       overrides: [
-        devicePreflightServiceProvider
-            .overrideWithValue(FakeDevicePreflightService.eligible()),
+        devicePreflightServiceProvider.overrideWithValue(
+          FakeDevicePreflightService.eligible(),
+        ),
         modelDownloaderProvider.overrideWithValue(FakeModelDownloader()),
       ],
     );
@@ -58,16 +61,24 @@ void main() {
 
     // Continue is disabled until the box is checked.
     FilledButton continueButton() => tester.widget<FilledButton>(
-          find.descendant(
-            of: find.byKey(LicenseScreen.continueKey),
-            matching: find.byType(FilledButton),
-          ),
-        );
-    expect(continueButton().onPressed, isNull, reason: 'gated before acknowledgment');
+      find.descendant(
+        of: find.byKey(LicenseScreen.continueKey),
+        matching: find.byType(FilledButton),
+      ),
+    );
+    expect(
+      continueButton().onPressed,
+      isNull,
+      reason: 'gated before acknowledgment',
+    );
 
     await tester.tap(find.byKey(LicenseScreen.checkboxKey));
     await tester.pump();
-    expect(continueButton().onPressed, isNotNull, reason: 'enabled after acknowledgment');
+    expect(
+      continueButton().onPressed,
+      isNotNull,
+      reason: 'enabled after acknowledgment',
+    );
 
     await tester.tap(find.byKey(LicenseScreen.continueKey));
     await tester.pump(); // kick off acknowledge + preflight
@@ -80,30 +91,33 @@ void main() {
     expect(find.byType(DownloadScreen), findsOneWidget);
   });
 
-  testWidgets('download screen shows live progress and a cancel (FR-007/FR-008)', (tester) async {
-    final downloader = FakeModelDownloader()
-      ..scriptedProgress = const [
-        DownloadProgress(
-          phase: DownloadPhase.running,
-          fraction: 0.42,
-          downloadedBytes: 1000000000,
-          totalBytes: 2400000000,
-        ),
-      ];
-    final container = makeContainer(
-      overrides: [modelDownloaderProvider.overrideWithValue(downloader)],
-    );
-    addTearDown(container.dispose);
+  testWidgets(
+    'download screen shows live progress and a cancel (FR-007/FR-008)',
+    (tester) async {
+      final downloader = FakeModelDownloader()
+        ..scriptedProgress = const [
+          DownloadProgress(
+            phase: DownloadPhase.running,
+            fraction: 0.42,
+            downloadedBytes: 1000000000,
+            totalBytes: 2400000000,
+          ),
+        ];
+      final container = makeContainer(
+        overrides: [modelDownloaderProvider.overrideWithValue(downloader)],
+      );
+      addTearDown(container.dispose);
 
-    await tester.pumpWidget(app(container, home: const DownloadScreen()));
-    await tester.pump(); // run the post-frame start()
-    await tester.pump(); // receive the scripted progress emission
+      await tester.pumpWidget(app(container, home: const DownloadScreen()));
+      await tester.pump(); // run the post-frame start()
+      await tester.pump(); // receive the scripted progress emission
 
-    expect(find.text('42'), findsOneWidget); // dot-matrix percent
-    expect(find.text('cancel'), findsOneWidget);
+      expect(find.text('42'), findsOneWidget); // dot-matrix percent
+      expect(find.text('cancel'), findsOneWidget);
 
-    await tester.tap(find.text('cancel'));
-    await tester.pump();
-    expect(downloader.cancelCount, 1);
-  });
+      await tester.tap(find.text('cancel'));
+      await tester.pump();
+      expect(downloader.cancelCount, 1);
+    },
+  );
 }

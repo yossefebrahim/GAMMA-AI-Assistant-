@@ -19,18 +19,28 @@ void main() {
     if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
   });
 
-  Directory imagesDir() => Directory('${tempDir.path}/${ImageFileStore.subdirectory}');
+  Directory imagesDir() =>
+      Directory('${tempDir.path}/${ImageFileStore.subdirectory}');
 
-  test('rejects an image larger than maxBytes and leaves no partial copy (FR-021)', () async {
-    final big = File('${tempDir.path}/big.jpg')
-      ..writeAsBytesSync(Uint8List(ImageFileStore.maxBytes + 1));
+  test(
+    'rejects an image larger than maxBytes and leaves no partial copy (FR-021)',
+    () async {
+      final big = File('${tempDir.path}/big.jpg')
+        ..writeAsBytesSync(Uint8List(ImageFileStore.maxBytes + 1));
 
-    await expectLater(() => store.persist(big.path), throwsA(isA<ArgumentError>()));
+      await expectLater(
+        () => store.persist(big.path),
+        throwsA(isA<ArgumentError>()),
+      );
 
-    // Nothing was copied into the app-private images/ directory.
-    final dir = imagesDir();
-    expect(dir.existsSync() ? dir.listSync() : const <FileSystemEntity>[], isEmpty);
-  });
+      // Nothing was copied into the app-private images/ directory.
+      final dir = imagesDir();
+      expect(
+        dir.existsSync() ? dir.listSync() : const <FileSystemEntity>[],
+        isEmpty,
+      );
+    },
+  );
 
   test('accepts an image exactly at maxBytes (boundary)', () async {
     final atLimit = File('${tempDir.path}/limit.jpg')
@@ -46,22 +56,31 @@ void main() {
   test('rejects an empty file and leaves no partial copy (FR-021)', () async {
     final empty = File('${tempDir.path}/empty.jpg')..writeAsBytesSync(<int>[]);
 
-    await expectLater(() => store.persist(empty.path), throwsA(isA<ArgumentError>()));
+    await expectLater(
+      () => store.persist(empty.path),
+      throwsA(isA<ArgumentError>()),
+    );
 
     final dir = imagesDir();
-    expect(dir.existsSync() ? dir.listSync() : const <FileSystemEntity>[], isEmpty);
+    expect(
+      dir.existsSync() ? dir.listSync() : const <FileSystemEntity>[],
+      isEmpty,
+    );
   });
 
-  test('persists a valid image, reads its bytes back, and deletes it (FR-018/FR-019)', () async {
-    final bytes = Uint8List.fromList([10, 20, 30, 40, 50]);
-    final src = File('${tempDir.path}/ok.jpg')..writeAsBytesSync(bytes);
+  test(
+    'persists a valid image, reads its bytes back, and deletes it (FR-018/FR-019)',
+    () async {
+      final bytes = Uint8List.fromList([10, 20, 30, 40, 50]);
+      final src = File('${tempDir.path}/ok.jpg')..writeAsBytesSync(bytes);
 
-    final stored = await store.persist(src.path, extension: '.jpg');
-    expect(await store.readBytes(stored), equals(bytes));
+      final stored = await store.persist(src.path, extension: '.jpg');
+      expect(await store.readBytes(stored), equals(bytes));
 
-    await store.deleteAll([stored]);
-    expect(File(stored).existsSync(), isFalse);
-    // deleteAll is idempotent — a second delete of a missing file is a no-op.
-    await store.deleteAll([stored]);
-  });
+      await store.deleteAll([stored]);
+      expect(File(stored).existsSync(), isFalse);
+      // deleteAll is idempotent — a second delete of a missing file is a no-op.
+      await store.deleteAll([stored]);
+    },
+  );
 }

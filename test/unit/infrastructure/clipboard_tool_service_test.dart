@@ -15,41 +15,56 @@ void main() {
 
   ProviderContainer build() {
     clipboard = FakeClipboardToolService();
-    return makeContainer(overrides: [
-      clipboardToolServiceProvider.overrideWithValue(clipboard),
-    ]);
+    return makeContainer(
+      overrides: [clipboardToolServiceProvider.overrideWithValue(clipboard)],
+    );
   }
 
-  test('copied text → success result carrying the (untruncated) text', () async {
-    final c = build();
-    addTearDown(c.dispose);
-    clipboard.text = 'the quick brown fox';
+  test(
+    'copied text → success result carrying the (untruncated) text',
+    () async {
+      final c = build();
+      addTearDown(c.dispose);
+      clipboard.text = 'the quick brown fox';
 
-    final outcome = await c.read(toolDispatcherProvider).dispatch('summarize_clipboard', const {});
-    expect(outcome, isA<ToolSuccess>());
-    final success = outcome as ToolSuccess;
-    expect(success.result['text'], 'the quick brown fox');
-    expect(success.result['truncated'], false);
-  });
+      final outcome = await c
+          .read(toolDispatcherProvider)
+          .dispatch('summarize_clipboard', const {});
+      expect(outcome, isA<ToolSuccess>());
+      final success = outcome as ToolSuccess;
+      expect(success.result['text'], 'the quick brown fox');
+      expect(success.result['truncated'], false);
+    },
+  );
 
-  test('empty clipboard → ToolFailure("clipboard empty or not text")', () async {
-    final c = build();
-    addTearDown(c.dispose);
-    clipboard.text = null;
+  test(
+    'empty clipboard → ToolFailure("clipboard empty or not text")',
+    () async {
+      final c = build();
+      addTearDown(c.dispose);
+      clipboard.text = null;
 
-    final outcome = await c.read(toolDispatcherProvider).dispatch('summarize_clipboard', const {});
-    expect(outcome, isA<ToolFailure>());
-    expect((outcome as ToolFailure).reason, 'clipboard empty or not text');
-  });
+      final outcome = await c
+          .read(toolDispatcherProvider)
+          .dispatch('summarize_clipboard', const {});
+      expect(outcome, isA<ToolFailure>());
+      expect((outcome as ToolFailure).reason, 'clipboard empty or not text');
+    },
+  );
 
   test('over-4,000-char text is truncated with truncated: true', () async {
     final c = build();
     addTearDown(c.dispose);
     clipboard.text = 'x' * 5000;
 
-    final outcome = await c.read(toolDispatcherProvider).dispatch('summarize_clipboard', const {});
+    final outcome = await c
+        .read(toolDispatcherProvider)
+        .dispatch('summarize_clipboard', const {});
     final success = outcome as ToolSuccess;
-    expect((success.result['text'] as String).length, ClipboardToolService.maxClipboardChars);
+    expect(
+      (success.result['text'] as String).length,
+      ClipboardToolService.maxClipboardChars,
+    );
     expect(success.result['truncated'], true);
   });
 
@@ -58,7 +73,9 @@ void main() {
     addTearDown(c.dispose);
     clipboard.text = 'y' * ClipboardToolService.maxClipboardChars;
 
-    final outcome = await c.read(toolDispatcherProvider).dispatch('summarize_clipboard', const {});
+    final outcome = await c
+        .read(toolDispatcherProvider)
+        .dispatch('summarize_clipboard', const {});
     expect((outcome as ToolSuccess).result['truncated'], false);
   });
 }

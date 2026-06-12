@@ -42,8 +42,14 @@ class DownloadProgress {
       other.errorMessage == errorMessage;
 
   @override
-  int get hashCode =>
-      Object.hash(phase, fraction, downloadedBytes, totalBytes, stalled, errorMessage);
+  int get hashCode => Object.hash(
+    phase,
+    fraction,
+    downloadedBytes,
+    totalBytes,
+    stalled,
+    errorMessage,
+  );
 }
 
 /// Abstraction over `background_downloader` (R2) — the only seam for fetching the model file.

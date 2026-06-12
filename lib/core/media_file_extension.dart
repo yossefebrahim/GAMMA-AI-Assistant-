@@ -1,7 +1,11 @@
 /// The ONE shared dotted-extension helper for stored media files (002 audit L5): derive from the
 /// MIME type first, fall back to parsing the source path, then to [fallback]. Used by both the
 /// image and audio file-store paths so naming policy lives in exactly one place.
-String mediaFileExtension({String? mimeType, String? path, required String fallback}) {
+String mediaFileExtension({
+  String? mimeType,
+  String? path,
+  required String fallback,
+}) {
   switch (mimeType) {
     case 'image/jpeg':
       return '.jpg';

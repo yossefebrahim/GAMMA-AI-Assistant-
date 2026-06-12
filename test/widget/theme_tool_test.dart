@@ -23,9 +23,11 @@ void main() {
 
   setUp(() {
     settings = StreamController<AppSettings>.broadcast();
-    container = makeContainer(overrides: [
-      settingsStreamProvider.overrideWith((ref) => settings.stream),
-    ]);
+    container = makeContainer(
+      overrides: [
+        settingsStreamProvider.overrideWith((ref) => settings.stream),
+      ],
+    );
   });
 
   tearDown(() {
@@ -34,58 +36,69 @@ void main() {
   });
 
   Widget app(Widget home) => UncontrolledProviderScope(
-        container: container,
-        child: Consumer(
-          builder: (context, ref, _) => MaterialApp(
-            theme: AppTheme.light,
-            darkTheme: AppTheme.dark,
-            themeMode: ref.watch(themeModeProvider).material,
-            home: home,
-          ),
-        ),
-      );
+    container: container,
+    child: Consumer(
+      builder: (context, ref, _) => MaterialApp(
+        theme: AppTheme.light,
+        darkTheme: AppTheme.dark,
+        themeMode: ref.watch(themeModeProvider).material,
+        home: home,
+      ),
+    ),
+  );
 
-  testWidgets('a set_theme change flips the live app theme to light', (tester) async {
+  testWidgets('a set_theme change flips the live app theme to light', (
+    tester,
+  ) async {
     await tester.pumpWidget(app(const Scaffold(body: SizedBox())));
     settings.add(const AppSettings(themeMode: AppThemeMode.dark));
     await tester.pump();
-    expect(Theme.of(tester.element(find.byType(Scaffold))).brightness, Brightness.dark);
+    expect(
+      Theme.of(tester.element(find.byType(Scaffold))).brightness,
+      Brightness.dark,
+    );
 
     // The handler flips the theme (set() updates the controller optimistically); the persisted
     // stream then propagates light. The whole app re-themes live.
-    final outcome = await container
-        .read(toolDispatcherProvider)
-        .dispatch('set_theme', const {'theme': 'light'});
+    final outcome = await container.read(toolDispatcherProvider).dispatch(
+      'set_theme',
+      const {'theme': 'light'},
+    );
     expect(outcome, isA<ToolSuccess>());
     settings.add(const AppSettings(themeMode: AppThemeMode.light));
     await tester.pump();
     // MaterialApp animates the theme transition (~200ms) — pump past it.
     await tester.pump(const Duration(milliseconds: 400));
 
-    expect(Theme.of(tester.element(find.byType(Scaffold))).brightness, Brightness.light);
-  });
-
-  testWidgets('a same-theme turn renders a success chip with the already-active summary',
-      (tester) async {
-    final chip = Message(
-      id: 1,
-      conversationId: 1,
-      role: MessageRole.tool,
-      content: 'theme dark · alreadyactive true',
-      sequence: 0,
-      createdAt: DateTime.utc(2026, 6, 10),
-      status: MessageStatus.complete,
-      toolName: 'set_theme',
-      toolArgs: const {'theme': 'dark'},
-      toolStatus: ToolCallStatus.success,
-      toolResult: const {'theme': 'dark', 'alreadyActive': true},
+    expect(
+      Theme.of(tester.element(find.byType(Scaffold))).brightness,
+      Brightness.light,
     );
-
-    await tester.pumpWidget(app(Scaffold(body: ToolChip(message: chip))));
-    settings.add(const AppSettings(themeMode: AppThemeMode.dark));
-    await tester.pump();
-
-    expect(find.text('TOOL · SET_THEME'), findsOneWidget);
-    expect(find.text('theme dark · alreadyactive true'), findsOneWidget);
   });
+
+  testWidgets(
+    'a same-theme turn renders a success chip with the already-active summary',
+    (tester) async {
+      final chip = Message(
+        id: 1,
+        conversationId: 1,
+        role: MessageRole.tool,
+        content: 'theme dark · alreadyactive true',
+        sequence: 0,
+        createdAt: DateTime.utc(2026, 6, 10),
+        status: MessageStatus.complete,
+        toolName: 'set_theme',
+        toolArgs: const {'theme': 'dark'},
+        toolStatus: ToolCallStatus.success,
+        toolResult: const {'theme': 'dark', 'alreadyActive': true},
+      );
+
+      await tester.pumpWidget(app(Scaffold(body: ToolChip(message: chip))));
+      settings.add(const AppSettings(themeMode: AppThemeMode.dark));
+      await tester.pump();
+
+      expect(find.text('TOOL · SET_THEME'), findsOneWidget);
+      expect(find.text('theme dark · alreadyactive true'), findsOneWidget);
+    },
+  );
 }

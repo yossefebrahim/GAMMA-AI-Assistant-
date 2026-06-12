@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:ai_assistant/app/router.dart';
 import 'package:ai_assistant/app/theme/app_colors.dart';
 import 'package:ai_assistant/app/theme/app_spacing.dart';
@@ -25,7 +27,7 @@ class _DownloadScreenState extends ConsumerState<DownloadScreen> {
     super.initState();
     // Kick off the download once this screen mounts.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(downloadControllerProvider.notifier).start();
+      unawaited(ref.read(downloadControllerProvider.notifier).start());
     });
   }
 
@@ -48,7 +50,8 @@ class _DownloadScreenState extends ConsumerState<DownloadScreen> {
     final colors = theme.extension<AppColors>()!;
     final state = ref.watch(downloadControllerProvider);
     // Soft-warn flag passed from the preflight gate: eligible but below the recommended 8 GB (R4).
-    final softWarn = (ModalRoute.of(context)?.settings.arguments as bool?) ?? false;
+    final softWarn =
+        (ModalRoute.of(context)?.settings.arguments as bool?) ?? false;
 
     // Route into chat once the model is installed.
     ref.listen(downloadControllerProvider, (previous, next) {
@@ -69,7 +72,10 @@ class _DownloadScreenState extends ConsumerState<DownloadScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Spacer(),
-              Text('model ( ${ModelCatalog.displayName} )', style: theme.textTheme.titleMedium),
+              Text(
+                'model ( ${ModelCatalog.displayName} )',
+                style: theme.textTheme.titleMedium,
+              ),
               const SizedBox(height: AppSpacing.s24),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.baseline,
@@ -77,9 +83,18 @@ class _DownloadScreenState extends ConsumerState<DownloadScreen> {
                 children: [
                   Text(
                     '${state.percent}',
-                    style: AppText.dotMatrix(fontSize: 72, color: colors.textPrimary),
+                    style: AppText.dotMatrix(
+                      fontSize: 72,
+                      color: colors.textPrimary,
+                    ),
                   ),
-                  Text('%', style: AppText.dotMatrix(fontSize: 32, color: colors.textSecondary)),
+                  Text(
+                    '%',
+                    style: AppText.dotMatrix(
+                      fontSize: 32,
+                      color: colors.textSecondary,
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: AppSpacing.s16),
@@ -87,7 +102,9 @@ class _DownloadScreenState extends ConsumerState<DownloadScreen> {
               const SizedBox(height: AppSpacing.s12),
               Text(
                 AppText.spec(
-                  state.stalled ? '$bytesLine · stalled…' : '$bytesLine · ${ModelCatalog.specLine}',
+                  state.stalled
+                      ? '$bytesLine · stalled…'
+                      : '$bytesLine · ${ModelCatalog.specLine}',
                 ),
                 style: theme.textTheme.labelSmall,
               ),
@@ -96,19 +113,48 @@ class _DownloadScreenState extends ConsumerState<DownloadScreen> {
                 Text(
                   'this device is below the recommended 8 gb of memory — the model will run, '
                   'but may be slow.',
-                  style: theme.textTheme.bodyMedium?.copyWith(color: colors.textSecondary),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: colors.textSecondary,
+                  ),
                 ),
               ],
               const Spacer(flex: 2),
               if (state.isFailed) ...[
                 Text(
                   state.error ?? 'download failed',
-                  style: theme.textTheme.bodyMedium?.copyWith(color: colors.accent),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: colors.accent,
+                  ),
                 ),
                 const SizedBox(height: AppSpacing.s12),
+                if (state.permissionBlocked) ...[
+                  SizedBox(
+                    height: AppSpacing.minTouchTarget,
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      onPressed: () => unawaited(
+                        ref
+                            .read(downloadControllerProvider.notifier)
+                            .openStorageSettings(),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: colors.textPrimary,
+                        side: BorderSide(color: colors.outline),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(
+                            AppSpacing.radiusControl,
+                          ),
+                        ),
+                      ),
+                      child: const Text('open settings'),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.s12),
+                ],
                 PrimaryButton(
                   label: 'retry',
-                  onPressed: () => ref.read(downloadControllerProvider.notifier).retry(),
+                  onPressed: () =>
+                      ref.read(downloadControllerProvider.notifier).retry(),
                 ),
               ] else
                 // Monochrome cancel (download cancel is NOT destructive-red; design-system §8).
@@ -116,12 +162,15 @@ class _DownloadScreenState extends ConsumerState<DownloadScreen> {
                   height: AppSpacing.minTouchTarget,
                   width: double.infinity,
                   child: OutlinedButton(
-                    onPressed: () => ref.read(downloadControllerProvider.notifier).cancel(),
+                    onPressed: () =>
+                        ref.read(downloadControllerProvider.notifier).cancel(),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: colors.textPrimary,
                       side: BorderSide(color: colors.outline),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(AppSpacing.radiusControl),
+                        borderRadius: BorderRadius.circular(
+                          AppSpacing.radiusControl,
+                        ),
                       ),
                     ),
                     child: const Text('cancel'),

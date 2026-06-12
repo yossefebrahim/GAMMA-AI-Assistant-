@@ -26,18 +26,24 @@ void main() {
           FakeMediaPermissionService(status: MediaPermissionStatus.granted),
         ),
         // Keep an image-capable model so the capability listener never clears the pending image.
-        modelCapabilitiesProvider.overrideWith((ref) => const ModelCapabilities(image: true)),
+        modelCapabilitiesProvider.overrideWith(
+          (ref) => const ModelCapabilities(image: true),
+        ),
       ],
     );
   });
 
   tearDown(() => container.dispose());
 
-  AttachmentController controller() => container.read(attachmentControllerProvider.notifier);
+  AttachmentController controller() =>
+      container.read(attachmentControllerProvider.notifier);
   AttachmentState read() => container.read(attachmentControllerProvider);
 
   test('pickFromLibrary sets a pending attachment (FR-001)', () async {
-    picker.libraryResult = const PickedImage(path: '/tmp/a.jpg', mimeType: 'image/jpeg');
+    picker.libraryResult = const PickedImage(
+      path: '/tmp/a.jpg',
+      mimeType: 'image/jpeg',
+    );
 
     await controller().pickFromLibrary();
 
@@ -64,26 +70,32 @@ void main() {
     expect(read().pending, isNull);
   });
 
-  test('picking another replaces it — single image only (FR-002/FR-003)', () async {
-    picker.libraryResult = const PickedImage(path: '/tmp/a.jpg');
-    await controller().pickFromLibrary();
-    picker.libraryResult = const PickedImage(path: '/tmp/b.jpg');
-    await controller().pickFromLibrary();
+  test(
+    'picking another replaces it — single image only (FR-002/FR-003)',
+    () async {
+      picker.libraryResult = const PickedImage(path: '/tmp/a.jpg');
+      await controller().pickFromLibrary();
+      picker.libraryResult = const PickedImage(path: '/tmp/b.jpg');
+      await controller().pickFromLibrary();
 
-    expect(read().pending?.path, '/tmp/b.jpg');
-  });
+      expect(read().pending?.path, '/tmp/b.jpg');
+    },
+  );
 
-  test('cancel (null) leaves the prior state untouched (edge: cancel picker)', () async {
-    // No prior attachment → cancel leaves none.
-    picker.libraryResult = null;
-    await controller().pickFromLibrary();
-    expect(read().pending, isNull);
+  test(
+    'cancel (null) leaves the prior state untouched (edge: cancel picker)',
+    () async {
+      // No prior attachment → cancel leaves none.
+      picker.libraryResult = null;
+      await controller().pickFromLibrary();
+      expect(read().pending, isNull);
 
-    // With a prior attachment → cancel keeps it.
-    picker.libraryResult = const PickedImage(path: '/tmp/a.jpg');
-    await controller().pickFromLibrary();
-    picker.cameraResult = null; // user cancels the camera
-    await controller().pickFromCamera();
-    expect(read().pending?.path, '/tmp/a.jpg');
-  });
+      // With a prior attachment → cancel keeps it.
+      picker.libraryResult = const PickedImage(path: '/tmp/a.jpg');
+      await controller().pickFromLibrary();
+      picker.cameraResult = null; // user cancels the camera
+      await controller().pickFromCamera();
+      expect(read().pending?.path, '/tmp/a.jpg');
+    },
+  );
 }

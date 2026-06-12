@@ -47,6 +47,11 @@ void main() {
         image_mime_type TEXT NULL
       );
       CREATE INDEX idx_messages_conversation ON messages (conversation_id, sequence);
+      CREATE TABLE app_settings_table (
+        id INTEGER NOT NULL PRIMARY KEY,
+        theme_mode TEXT NOT NULL,
+        license_acknowledged_at TEXT NULL
+      );
     ''');
     raw.execute('''
       INSERT INTO conversations (id, title, created_at, updated_at)
@@ -65,31 +70,43 @@ void main() {
     raw.close();
   }
 
-  test('v2 → v3 adds nullable audio columns; v2 rows (incl. images) survive unchanged '
-      '(R6, FR-019)', () async {
-    seedV2();
+  test(
+    'v2 → v3 adds nullable audio columns; v2 rows (incl. images) survive unchanged '
+    '(R6, FR-019)',
+    () async {
+      seedV2();
 
-    // Open at v3 → drift runs onUpgrade(2, 3): only the audio block fires.
-    final db = AppDatabase(NativeDatabase(dbFile));
-    addTearDown(db.close);
+      // Open at the current schema → drift runs onUpgrade(2, 5): the audio (v3), tool (v4), and
+      // memory (v5) blocks fire.
+      final db = AppDatabase(NativeDatabase(dbFile));
+      addTearDown(db.close);
 
-    final messages = await db.select(db.messages).get();
-    expect(messages, hasLength(3));
+      final messages = await db.select(db.messages).get();
+      expect(messages, hasLength(3));
 
-    final text = messages.firstWhere((m) => m.id == 1);
-    expect(text.content, 'hello from v2');
-    expect(text.audioPath, isNull, reason: 'new columns default to NULL for v2 rows');
-    expect(text.audioMimeType, isNull);
+      final text = messages.firstWhere((m) => m.id == 1);
+      expect(text.content, 'hello from v2');
+      expect(
+        text.audioPath,
+        isNull,
+        reason: 'new columns default to NULL for v2 rows',
+      );
+      expect(text.audioMimeType, isNull);
 
-    final image = messages.firstWhere((m) => m.id == 2);
-    expect(image.imagePath, '/images/pic.jpg', reason: 'v2 image data survives untouched');
-    expect(image.imageMimeType, 'image/jpeg');
-    expect(image.audioPath, isNull);
+      final image = messages.firstWhere((m) => m.id == 2);
+      expect(
+        image.imagePath,
+        '/images/pic.jpg',
+        reason: 'v2 image data survives untouched',
+      );
+      expect(image.imageMimeType, 'image/jpeg');
+      expect(image.audioPath, isNull);
 
-    final conversations = await db.select(db.conversations).get();
-    expect(conversations.single.title, 'v2 chat');
-    expect(db.schemaVersion, 4);
-  });
+      final conversations = await db.select(db.conversations).get();
+      expect(conversations.single.title, 'v2 chat');
+      expect(db.schemaVersion, 5);
+    },
+  );
 
   test('foreign keys stay enforced after the upgrade (cascade intact)', () async {
     seedV2();
@@ -106,7 +123,9 @@ void main() {
     final db = AppDatabase(NativeDatabase(dbFile));
     addTearDown(db.close);
 
-    await db.into(db.messages).insert(
+    await db
+        .into(db.messages)
+        .insert(
           MessagesCompanion.insert(
             conversationId: 1,
             role: 'user',
@@ -119,38 +138,45 @@ void main() {
           ),
         );
 
-    final row =
-        (await db.select(db.messages).get()).firstWhere((m) => m.sequence == 3);
+    final row = (await db.select(db.messages).get()).firstWhere(
+      (m) => m.sequence == 3,
+    );
     expect(row.audioPath, '/audio/clip.wav');
     expect(row.audioMimeType, 'audio/wav');
   });
 
-  test('fresh installs land on v3 directly with the audio columns (onCreate round-trip)',
-      () async {
-    final db = AppDatabase(NativeDatabase.memory());
-    addTearDown(db.close);
+  test(
+    'fresh installs land on v3 directly with the audio columns (onCreate round-trip)',
+    () async {
+      final db = AppDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
 
-    final convId = await db.into(db.conversations).insert(
-          ConversationsCompanion.insert(
-            createdAt: DateTime.utc(2026, 6, 10),
-            updatedAt: DateTime.utc(2026, 6, 10),
-          ),
-        );
-    await db.into(db.messages).insert(
-          MessagesCompanion.insert(
-            conversationId: convId,
-            role: 'user',
-            content: '',
-            sequence: 0,
-            createdAt: DateTime.utc(2026, 6, 10),
-            status: 'complete',
-            audioPath: const Value('/audio/x.wav'),
-            audioMimeType: const Value('audio/wav'),
-          ),
-        );
+      final convId = await db
+          .into(db.conversations)
+          .insert(
+            ConversationsCompanion.insert(
+              createdAt: DateTime.utc(2026, 6, 10),
+              updatedAt: DateTime.utc(2026, 6, 10),
+            ),
+          );
+      await db
+          .into(db.messages)
+          .insert(
+            MessagesCompanion.insert(
+              conversationId: convId,
+              role: 'user',
+              content: '',
+              sequence: 0,
+              createdAt: DateTime.utc(2026, 6, 10),
+              status: 'complete',
+              audioPath: const Value('/audio/x.wav'),
+              audioMimeType: const Value('audio/wav'),
+            ),
+          );
 
-    final row = (await db.select(db.messages).get()).single;
-    expect(row.audioPath, '/audio/x.wav');
-    expect(row.audioMimeType, 'audio/wav');
-  });
+      final row = (await db.select(db.messages).get()).single;
+      expect(row.audioPath, '/audio/x.wav');
+      expect(row.audioMimeType, 'audio/wav');
+    },
+  );
 }

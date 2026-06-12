@@ -3,7 +3,8 @@ import 'dart:io' show Platform;
 import 'package:ai_assistant/domain/services/device_info_tool_service.dart';
 import 'package:battery_plus/battery_plus.dart';
 import 'package:device_info_plus/device_info_plus.dart';
-import 'package:flutter/services.dart' show MethodChannel, PlatformException, MissingPluginException;
+import 'package:flutter/services.dart'
+    show MethodChannel, PlatformException, MissingPluginException;
 
 /// `device_info_plus` + `battery_plus` + a ~10-line StatFs `MethodChannel`-backed
 /// [DeviceInfoToolService] (004 R4) — the ONLY importer of `battery_plus` (confined to
@@ -17,14 +18,15 @@ class PlatformDeviceInfoToolService implements DeviceInfoToolService {
     DeviceInfoPlugin? deviceInfo,
     Battery? battery,
     MethodChannel? storageChannel,
-  })  : _deviceInfo = deviceInfo ?? DeviceInfoPlugin(),
-        _battery = battery ?? Battery(),
-        _storageChannel = storageChannel ?? _defaultStorageChannel;
+  }) : _deviceInfo = deviceInfo ?? DeviceInfoPlugin(),
+       _battery = battery ?? Battery(),
+       _storageChannel = storageChannel ?? _defaultStorageChannel;
 
   /// The free-storage channel — a StatFs read in MainActivity (R4: rejected the unmaintained 0.x
   /// `disk_space_plus`; an in-repo channel is ~10 lines of Kotlin in an Android-only app).
-  static const MethodChannel _defaultStorageChannel =
-      MethodChannel('ai_assistant/device_storage');
+  static const MethodChannel _defaultStorageChannel = MethodChannel(
+    'ai_assistant/device_storage',
+  );
 
   final DeviceInfoPlugin _deviceInfo;
   final Battery _battery;
@@ -68,8 +70,9 @@ class PlatformDeviceInfoToolService implements DeviceInfoToolService {
     // Free/total storage (StatFs channel). A missing channel (non-Android, or the method not
     // registered) degrades to unknown rather than throwing (MissingPluginException).
     try {
-      final storage =
-          await _storageChannel.invokeMapMethod<String, Object?>('getStorage');
+      final storage = await _storageChannel.invokeMapMethod<String, Object?>(
+        'getStorage',
+      );
       result['storageFreeBytes'] = storage?['freeBytes'] ?? _unknown;
       result['storageTotalBytes'] = storage?['totalBytes'] ?? _unknown;
     } on MissingPluginException {
@@ -87,10 +90,10 @@ class PlatformDeviceInfoToolService implements DeviceInfoToolService {
   }
 
   String _stateName(BatteryState state) => switch (state) {
-        BatteryState.charging => 'charging',
-        BatteryState.discharging => 'discharging',
-        BatteryState.full => 'full',
-        BatteryState.connectedNotCharging => 'connected not charging',
-        BatteryState.unknown => _unknown,
-      };
+    BatteryState.charging => 'charging',
+    BatteryState.discharging => 'discharging',
+    BatteryState.full => 'full',
+    BatteryState.connectedNotCharging => 'connected not charging',
+    BatteryState.unknown => _unknown,
+  };
 }

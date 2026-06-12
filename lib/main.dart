@@ -1,7 +1,8 @@
 import 'package:ai_assistant/app/app.dart';
 import 'package:ai_assistant/infrastructure/gemma/flutter_gemma_service.dart'
     show installGemmaLogFilter;
-import 'package:flutter/foundation.dart' show LicenseEntryWithLineBreaks, LicenseRegistry;
+import 'package:flutter/foundation.dart'
+    show LicenseEntryWithLineBreaks, LicenseRegistry;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';

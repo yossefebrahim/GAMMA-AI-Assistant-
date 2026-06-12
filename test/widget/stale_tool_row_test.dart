@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:ai_assistant/app/theme/app_theme.dart';
 import 'package:ai_assistant/app/widgets/dot_pulse.dart';
 import 'package:ai_assistant/data/repositories/drift_conversation_repository.dart';
@@ -24,48 +26,58 @@ void main() {
 
   setUp(() {
     gemma = FakeGemmaService(
-        capabilitiesData: const ModelCapabilities(functionCalling: true));
-    container = makeContainer(overrides: [
-      gemmaServiceProvider.overrideWithValue(gemma),
-      modelSessionProvider.overrideWith((ref) => gemma),
-    ]);
+      capabilitiesData: const ModelCapabilities(functionCalling: true),
+    );
+    container = makeContainer(
+      overrides: [
+        gemmaServiceProvider.overrideWithValue(gemma),
+        modelSessionProvider.overrideWith((ref) => gemma),
+      ],
+    );
   });
 
   tearDown(() => container.dispose());
 
   Widget app() => UncontrolledProviderScope(
-        container: container,
-        child: MaterialApp(
-          theme: AppTheme.light,
-          darkTheme: AppTheme.dark,
-          themeMode: ThemeMode.dark,
-          home: const ChatScreen(),
-        ),
+    container: container,
+    child: MaterialApp(
+      theme: AppTheme.light,
+      darkTheme: AppTheme.dark,
+      themeMode: ThemeMode.dark,
+      home: const ChatScreen(),
+    ),
+  );
+
+  testWidgets(
+    'a stale running tool row is swept and renders as a terminal chip, no dot-pulse',
+    (tester) async {
+      final repo = container.read(conversationRepositoryProvider);
+      final conversationId = await _seedRunningTool(repo);
+
+      await tester.pumpWidget(app());
+      await tester
+          .pump(); // resolve model session + trigger ChatController.build (the sweep)
+      unawaited(
+        container
+            .read(chatControllerProvider.notifier)
+            .openConversation(conversationId),
       );
+      // Pump through the fire-and-forget sweep + the reactive re-emit.
+      for (var i = 0; i < 4; i++) {
+        await tester.pump(const Duration(milliseconds: 20));
+      }
 
-  testWidgets('a stale running tool row is swept and renders as a terminal chip, no dot-pulse',
-      (tester) async {
-    final repo = container.read(conversationRepositoryProvider);
-    final conversationId = await _seedRunningTool(repo);
+      // The chip renders, but NOT in the running state (no dot-pulse) — it was finalized.
+      expect(find.byType(ToolChip), findsOneWidget);
+      expect(find.byKey(ToolChip.runningKey), findsNothing);
+      expect(find.byType(DotPulse), findsNothing);
 
-    await tester.pumpWidget(app());
-    await tester.pump(); // resolve model session + trigger ChatController.build (the sweep)
-    container.read(chatControllerProvider.notifier).openConversation(conversationId);
-    // Pump through the fire-and-forget sweep + the reactive re-emit.
-    for (var i = 0; i < 4; i++) {
-      await tester.pump(const Duration(milliseconds: 20));
-    }
-
-    // The chip renders, but NOT in the running state (no dot-pulse) — it was finalized.
-    expect(find.byType(ToolChip), findsOneWidget);
-    expect(find.byKey(ToolChip.runningKey), findsNothing);
-    expect(find.byType(DotPulse), findsNothing);
-
-    // The persisted row is now error('interrupted').
-    final rows = await repo.loadTurns(conversationId);
-    final chip = rows.firstWhere((m) => m.isTool);
-    expect(chip.toolResult, {'error': 'interrupted'});
-  });
+      // The persisted row is now error('interrupted').
+      final rows = await repo.loadTurns(conversationId);
+      final chip = rows.firstWhere((m) => m.isTool);
+      expect(chip.toolResult, {'error': 'interrupted'});
+    },
+  );
 }
 
 Future<int> _seedRunningTool(ConversationRepository repo) async {
@@ -73,6 +85,9 @@ Future<int> _seedRunningTool(ConversationRepository repo) async {
   await repo.appendUserMessage(conv.id, 'battery?');
   // A tool row appended but never finalized — the killed-process scenario.
   await repo.appendToolInvocation(
-      conversationId: conv.id, toolName: 'get_device_info', args: const {});
+    conversationId: conv.id,
+    toolName: 'get_device_info',
+    args: const {},
+  );
   return conv.id;
 }

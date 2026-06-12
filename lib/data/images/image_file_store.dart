@@ -13,7 +13,8 @@ import 'package:path_provider/path_provider.dart';
 /// device (`ImageFileStore(documentsDirectory: () async => Directory(tmp))`).
 class ImageFileStore {
   ImageFileStore({Future<Directory> Function()? documentsDirectory})
-      : _documentsDirectory = documentsDirectory ?? getApplicationDocumentsDirectory;
+    : _documentsDirectory =
+          documentsDirectory ?? getApplicationDocumentsDirectory;
 
   final Future<Directory> Function() _documentsDirectory;
 
@@ -55,7 +56,8 @@ class ImageFileStore {
     }
     final dir = await _imagesDir();
     // Extension policy lives in the ONE shared helper (002 audit L5, adopted by 003).
-    final ext = extension ?? mediaFileExtension(path: tempPath, fallback: '.jpg');
+    final ext =
+        extension ?? mediaFileExtension(path: tempPath, fallback: '.jpg');
     final name = '${DateTime.now().microsecondsSinceEpoch}_${_counter++}$ext';
     final dest = '${dir.path}/$name';
     await source.copy(dest);
@@ -64,7 +66,8 @@ class ImageFileStore {
 
   /// Read the bytes of a stored image just-in-time for `generate`/replay (Principle VIII — bytes
   /// are not retained between turns).
-  Future<Uint8List> readBytes(String storedPath) => File(storedPath).readAsBytes();
+  Future<Uint8List> readBytes(String storedPath) =>
+      File(storedPath).readAsBytes();
 
   /// Delete the given stored image files (FR-019). Missing files are ignored so cleanup is
   /// idempotent.
@@ -76,8 +79,9 @@ class ImageFileStore {
       }
     }
   }
-
 }
 
 /// App-wide [ImageFileStore]. Overridable in tests with a temp-dir-backed store.
-final imageFileStoreProvider = Provider<ImageFileStore>((ref) => ImageFileStore());
+final imageFileStoreProvider = Provider<ImageFileStore>(
+  (ref) => ImageFileStore(),
+);

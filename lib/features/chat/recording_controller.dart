@@ -82,16 +82,21 @@ class RecordingState {
 /// of the preview player (stopped on any exit from previewing — Principle VIII).
 class RecordingController extends Notifier<RecordingState> {
   /// All microcopy lowercase per the design voice (Principle X).
-  static const String tooShortNote = 'too short — record at least half a second';
-  static const String limitReachedNote = 'limit reached — recording stopped at 30 seconds';
+  static const String tooShortNote =
+      'too short — record at least half a second';
+  static const String limitReachedNote =
+      'limit reached — recording stopped at 30 seconds';
   static const String interruptedKeptNote = 'recording stopped — clip kept';
-  static const String interruptedDiscardedNote = 'recording stopped — too short to keep';
-  static const String imageReplacedNote = 'one attachment per message — image removed';
+  static const String interruptedDiscardedNote =
+      'recording stopped — too short to keep';
+  static const String imageReplacedNote =
+      'one attachment per message — image removed';
   static const String clearedOnModelSwitchNote =
       'voice clip removed — this model does not accept audio';
   static const String recorderUnavailableError =
       "couldn't start recording — the microphone is unavailable";
-  static const String persistFailedError = "couldn't use that recording — record again";
+  static const String persistFailedError =
+      "couldn't use that recording — record again";
 
   Timer? _ticker;
   Timer? _capTimer;
@@ -109,14 +114,17 @@ class RecordingController extends Notifier<RecordingState> {
 
   AudioRecorderService get _recorder => ref.read(audioRecorderServiceProvider);
   AudioPreviewPlayer get _player => ref.read(audioPreviewPlayerProvider);
-  MediaPermissionService get _permission => ref.read(mediaPermissionServiceProvider);
+  MediaPermissionService get _permission =>
+      ref.read(mediaPermissionServiceProvider);
 
   /// Track the preview player's real state so the chip's play/stop toggle is honest even when
   /// playback completes naturally or fails quietly (contract guarantee 4). Subscribed lazily on
   /// first playback — the platform player is never instantiated for audio-free sessions.
   void _ensurePlayerTracking() {
     _playerSub ??= _player.state.listen((playerState) {
-      state = state.copyWith(isPreviewPlaying: playerState == AudioPreviewState.playing);
+      state = state.copyWith(
+        isPreviewPlaying: playerState == AudioPreviewState.playing,
+      );
     });
   }
 
@@ -141,16 +149,24 @@ class RecordingController extends Notifier<RecordingState> {
         if (result == MediaPermissionStatus.granted) {
           await _start();
         } else if (result == MediaPermissionStatus.permanentlyDenied) {
-          state = state.copyWith(permissionPrompt: MicPermissionPrompt.permanentlyDenied);
+          state = state.copyWith(
+            permissionPrompt: MicPermissionPrompt.permanentlyDenied,
+          );
         } else if (result == MediaPermissionStatus.restricted) {
-          state = state.copyWith(permissionPrompt: MicPermissionPrompt.restricted);
+          state = state.copyWith(
+            permissionPrompt: MicPermissionPrompt.restricted,
+          );
         } else {
           state = state.copyWith(permissionPrompt: MicPermissionPrompt.denied);
         }
       case MediaPermissionStatus.permanentlyDenied:
-        state = state.copyWith(permissionPrompt: MicPermissionPrompt.permanentlyDenied);
+        state = state.copyWith(
+          permissionPrompt: MicPermissionPrompt.permanentlyDenied,
+        );
       case MediaPermissionStatus.restricted:
-        state = state.copyWith(permissionPrompt: MicPermissionPrompt.restricted);
+        state = state.copyWith(
+          permissionPrompt: MicPermissionPrompt.restricted,
+        );
     }
   }
 
@@ -164,7 +180,10 @@ class RecordingController extends Notifier<RecordingState> {
       await _recorder.start();
     } on RecorderUnavailableException {
       // Honest failure, composer-inline (FR-021/Principle V): the mic could not be acquired.
-      state = RecordingState(error: recorderUnavailableError, permissionPrompt: state.permissionPrompt);
+      state = RecordingState(
+        error: recorderUnavailableError,
+        permissionPrompt: state.permissionPrompt,
+      );
       return;
     }
     state = const RecordingState(phase: RecordingPhase.recording);
@@ -174,7 +193,9 @@ class RecordingController extends Notifier<RecordingState> {
   void _startTimers() {
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (state.isRecording) {
-        state = state.copyWith(elapsed: state.elapsed + const Duration(seconds: 1));
+        state = state.copyWith(
+          elapsed: state.elapsed + const Duration(seconds: 1),
+        );
       }
     });
     // The cap is the CONTROLLER's policy (contract guarantee 3): auto-stop keeps the clip with a
@@ -316,7 +337,8 @@ class RecordingController extends Notifier<RecordingState> {
       final recorded = await _recorder.stop();
       if (recorded == null) {
         state = const RecordingState(note: interruptedDiscardedNote);
-      } else if (recorded.durationMs < AudioConstants.minClipDuration.inMilliseconds) {
+      } else if (recorded.durationMs <
+          AudioConstants.minClipDuration.inMilliseconds) {
         await _deleteTemp(recorded.path);
         state = const RecordingState(note: interruptedDiscardedNote);
       } else {
@@ -330,23 +352,28 @@ class RecordingController extends Notifier<RecordingState> {
   }
 
   /// Dismiss the mic permission explainer (FR-012) — the composer stays fully usable.
-  void dismissPrompt() => state = state.copyWith(permissionPrompt: MicPermissionPrompt.none);
+  void dismissPrompt() =>
+      state = state.copyWith(permissionPrompt: MicPermissionPrompt.none);
 
   /// Open the OS app-settings page so the user can grant a permanently-denied mic permission
   /// (FR-011, shared `openSettings()` on the permission seam).
   Future<void> openSettings() => _permission.openSettings();
 
   /// Dismiss the transient note/error line.
-  void dismissMessage() => state = state.copyWith(clearNote: true, clearError: true);
+  void dismissMessage() =>
+      state = state.copyWith(clearNote: true, clearError: true);
 
-  Future<void> _deleteTemp(String path) => ref.read(tempFileDeleterProvider)(path);
+  Future<void> _deleteTemp(String path) =>
+      ref.read(tempFileDeleterProvider)(path);
 }
 
 /// Deletes an unsent recorder temp file (the controller's cleanup duty —
 /// contracts/audio_recorder.md #4). Injectable: widget tests run in flutter_test's fake-async
 /// zone, where real file-I/O futures never complete, so they override this with an in-memory
 /// no-op while unit tests keep the real deletion.
-final tempFileDeleterProvider = Provider<Future<void> Function(String path)>((ref) {
+final tempFileDeleterProvider = Provider<Future<void> Function(String path)>((
+  ref,
+) {
   return (path) async {
     final file = File(path);
     if (await file.exists()) {
@@ -356,4 +383,6 @@ final tempFileDeleterProvider = Provider<Future<void> Function(String path)>((re
 });
 
 final recordingControllerProvider =
-    NotifierProvider<RecordingController, RecordingState>(RecordingController.new);
+    NotifierProvider<RecordingController, RecordingState>(
+      RecordingController.new,
+    );

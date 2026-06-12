@@ -9,7 +9,11 @@ import 'package:flutter/material.dart';
 /// red for the live recording state — plus a mono `m:ss` elapsed readout updating ≥1/s (SC-004).
 /// The ≥48dp stop control lives next to it in the composer.
 class RecordingIndicator extends StatelessWidget {
-  const RecordingIndicator({super.key, required this.elapsed, required this.amplitude});
+  const RecordingIndicator({
+    super.key,
+    required this.elapsed,
+    required this.amplitude,
+  });
 
   static const Key elapsedKey = Key('recording-elapsed');
 
@@ -47,12 +51,15 @@ class RecordingIndicator extends StatelessWidget {
                   final lit = level >= threshold - (1 / _dotCount) / 2;
                   return Padding(
                     padding: EdgeInsets.only(
-                        right: index == _dotCount - 1 ? 0 : _dotSpacing),
+                      right: index == _dotCount - 1 ? 0 : _dotSpacing,
+                    ),
                     child: Container(
                       width: _dotSize,
                       height: _dotSize,
                       decoration: BoxDecoration(
-                        color: colors.accent.withValues(alpha: lit ? 1.0 : 0.25),
+                        color: colors.accent.withValues(
+                          alpha: lit ? 1.0 : 0.25,
+                        ),
                         shape: BoxShape.circle,
                       ),
                     ),
@@ -65,7 +72,9 @@ class RecordingIndicator extends StatelessWidget {
           Text(
             AppText.spec(AudioConstants.formatDuration(elapsed)),
             key: elapsedKey,
-            style: theme.textTheme.labelSmall?.copyWith(color: colors.textPrimary),
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: colors.textPrimary,
+            ),
           ),
         ],
       ),

@@ -33,9 +33,13 @@ void main() {
       overrides: [
         gemmaServiceProvider.overrideWithValue(gemma),
         modelSessionProvider.overrideWith((ref) => gemma),
-        audioRecorderServiceProvider.overrideWithValue(FakeAudioRecorderService()),
+        audioRecorderServiceProvider.overrideWithValue(
+          FakeAudioRecorderService(),
+        ),
         audioPreviewPlayerProvider.overrideWithValue(FakeAudioPreviewPlayer()),
-        mediaPermissionServiceProvider.overrideWithValue(FakeMediaPermissionService()),
+        mediaPermissionServiceProvider.overrideWithValue(
+          FakeMediaPermissionService(),
+        ),
         tempFileDeleterProvider.overrideWithValue((path) async {}),
       ],
     );
@@ -44,14 +48,14 @@ void main() {
   tearDown(() => container.dispose());
 
   Widget app() => UncontrolledProviderScope(
-        container: container,
-        child: MaterialApp(
-          theme: AppTheme.light,
-          darkTheme: AppTheme.dark,
-          themeMode: ThemeMode.dark,
-          home: const ChatScreen(),
-        ),
-      );
+    container: container,
+    child: MaterialApp(
+      theme: AppTheme.light,
+      darkTheme: AppTheme.dark,
+      themeMode: ThemeMode.dark,
+      home: const ChatScreen(),
+    ),
+  );
 
   Future<void> sendText(WidgetTester tester, String text) async {
     await tester.enterText(find.byKey(Composer.fieldKey), text);
@@ -61,52 +65,73 @@ void main() {
     await tester.pump(const Duration(milliseconds: 350));
   }
 
-  testWidgets('an AudioProcessingException shows the dismissible audio banner; the turn '
-      'finalizes stopped-partial and isGenerating resets (FR-022, SC-008)', (tester) async {
-    gemma.throwAudioProcessing = true;
+  testWidgets(
+    'an AudioProcessingException shows the dismissible audio banner; the turn '
+    'finalizes stopped-partial and isGenerating resets (FR-022, SC-008)',
+    (tester) async {
+      gemma.throwAudioProcessing = true;
 
-    await tester.pumpWidget(app());
-    await tester.pump();
-    await sendText(tester, 'transcribe this');
+      await tester.pumpWidget(app());
+      await tester.pump();
+      await sendText(tester, 'transcribe this');
 
-    // The clear, dismissible message.
-    expect(find.byKey(ChatScreen.errorBannerKey), findsOneWidget);
-    expect(find.text(ChatController.audioErrorMessage), findsOneWidget);
-    expect(container.read(chatControllerProvider).isGenerating, isFalse);
+      // The clear, dismissible message.
+      expect(find.byKey(ChatScreen.errorBannerKey), findsOneWidget);
+      expect(find.text(ChatController.audioErrorMessage), findsOneWidget);
+      expect(container.read(chatControllerProvider).isGenerating, isFalse);
 
-    // The assistant turn was finalized stopped-partial — never a hang (Principle V).
-    final conversationId = container.read(chatControllerProvider).conversationId!;
-    final turns =
-        await container.read(conversationRepositoryProvider).loadTurns(conversationId);
-    final assistant = turns.firstWhere((m) => m.role == MessageRole.assistant);
-    expect(assistant.status, MessageStatus.stoppedPartial);
+      // The assistant turn was finalized stopped-partial — never a hang (Principle V).
+      final conversationId = container
+          .read(chatControllerProvider)
+          .conversationId!;
+      final turns = await container
+          .read(conversationRepositoryProvider)
+          .loadTurns(conversationId);
+      final assistant = turns.firstWhere(
+        (m) => m.role == MessageRole.assistant,
+      );
+      expect(assistant.status, MessageStatus.stoppedPartial);
 
-    // Dismissible; the composer stays usable.
-    await tester.tap(find.byKey(ChatScreen.errorDismissKey));
-    await tester.pump();
-    expect(find.byKey(ChatScreen.errorBannerKey), findsNothing);
-    await tester.enterText(find.byKey(Composer.fieldKey), 'still works');
-    await tester.pump();
-    expect(tester.widget<IconButton>(find.byKey(Composer.sendKey)).onPressed, isNotNull);
-  }, timeout: const Timeout(Duration(seconds: 60)));
+      // Dismissible; the composer stays usable.
+      await tester.tap(find.byKey(ChatScreen.errorDismissKey));
+      await tester.pump();
+      expect(find.byKey(ChatScreen.errorBannerKey), findsNothing);
+      await tester.enterText(find.byKey(Composer.fieldKey), 'still works');
+      await tester.pump();
+      expect(
+        tester.widget<IconButton>(find.byKey(Composer.sendKey)).onPressed,
+        isNotNull,
+      );
+    },
+    timeout: const Timeout(Duration(seconds: 60)),
+  );
 
-  testWidgets('a generic error on an audio-free follow-up is NOT remapped to the audio banner '
-      '(002 audit L4 regression lock)', (tester) async {
-    gemma.scriptedStreamError = StateError('native blew up mid-stream');
+  testWidgets(
+    'a generic error on an audio-free follow-up is NOT remapped to the audio banner '
+    '(002 audit L4 regression lock)',
+    (tester) async {
+      gemma.scriptedStreamError = StateError('native blew up mid-stream');
 
-    await tester.pumpWidget(app());
-    await tester.pump();
-    await sendText(tester, 'plain text follow-up');
+      await tester.pumpWidget(app());
+      await tester.pump();
+      await sendText(tester, 'plain text follow-up');
 
-    // No audio (or image) banner — the failure is kept generic; the turn still finalizes.
-    expect(find.text(ChatController.audioErrorMessage), findsNothing);
-    expect(find.text(ChatController.imageErrorMessage), findsNothing);
-    expect(container.read(chatControllerProvider).isGenerating, isFalse);
+      // No audio (or image) banner — the failure is kept generic; the turn still finalizes.
+      expect(find.text(ChatController.audioErrorMessage), findsNothing);
+      expect(find.text(ChatController.imageErrorMessage), findsNothing);
+      expect(container.read(chatControllerProvider).isGenerating, isFalse);
 
-    final conversationId = container.read(chatControllerProvider).conversationId!;
-    final turns =
-        await container.read(conversationRepositoryProvider).loadTurns(conversationId);
-    final assistant = turns.firstWhere((m) => m.role == MessageRole.assistant);
-    expect(assistant.status, MessageStatus.stoppedPartial);
-  }, timeout: const Timeout(Duration(seconds: 60)));
+      final conversationId = container
+          .read(chatControllerProvider)
+          .conversationId!;
+      final turns = await container
+          .read(conversationRepositoryProvider)
+          .loadTurns(conversationId);
+      final assistant = turns.firstWhere(
+        (m) => m.role == MessageRole.assistant,
+      );
+      expect(assistant.status, MessageStatus.stoppedPartial);
+    },
+    timeout: const Timeout(Duration(seconds: 60)),
+  );
 }

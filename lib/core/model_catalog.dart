@@ -47,8 +47,18 @@ abstract final class ModelCatalog {
   /// Download filename while in flight (never loadable as a model — FR-011).
   static const String partFileName = 'gemma-4-e2b.litertlm.part';
 
-  /// App-private subdirectory under the documents dir where the model lives.
+  /// Subdirectory (under the models root) where the model file lives.
   static const String directory = 'models';
+
+  /// Top-level **public** folder on shared storage where the model is stored so it SURVIVES an
+  /// APK uninstall/reinstall (the whole point: a 2.4 GB re-download every wipe is the pain).
+  /// On Android the model lands at `<shared-storage-root>/AiAssistant/models/` (e.g.
+  /// `/storage/emulated/0/AiAssistant/models/`), which is outside `/Android/data/<pkg>/` and so is
+  /// NOT deleted on uninstall. Reading/writing it needs the one-time "all files access" grant
+  /// (`MANAGE_EXTERNAL_STORAGE`); the grant itself is per-install and must be re-given after a
+  /// reinstall, but the multi-GB file is kept. Off-Android (tests/desktop) the downloader falls
+  /// back to app-private storage and this constant is unused.
+  static const String publicAppDirectory = 'AiAssistant';
 
   /// Open, redistributable source for the one-time download (clarification Q1).
   /// Public `litert-community` Gemma 4 E2B `.litertlm` artifact — NO HuggingFace token/auth needed

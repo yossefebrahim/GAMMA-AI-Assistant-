@@ -7,7 +7,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Reactive conversation list, most-recently-updated first (FR-020). Updates live on any
 /// create/delete/new-message via drift's `.watch`.
-final conversationsProvider = StreamProvider.autoDispose<List<Conversation>>((ref) {
+final conversationsProvider = StreamProvider.autoDispose<List<Conversation>>((
+  ref,
+) {
   return ref.watch(conversationRepositoryProvider).watchConversations();
 });
 
@@ -18,7 +20,9 @@ class HistoryController extends Notifier<void> {
   void build() {
     // Sweep stale `running` tool rows when the history surface opens too (data-model §4) — a
     // reopened conversation must never render an in-flight chip. Fire-and-forget.
-    unawaited(ref.read(conversationRepositoryProvider).sweepStaleToolInvocations());
+    unawaited(
+      ref.read(conversationRepositoryProvider).sweepStaleToolInvocations(),
+    );
   }
 
   /// Start a fresh, empty thread — existing conversations are preserved (FR-019).
@@ -34,12 +38,17 @@ class HistoryController extends Notifier<void> {
   /// Delete a conversation and its messages (FR-022). If it was the open thread, reset chat to a
   /// fresh, empty one so the UI never points at a deleted conversation.
   Future<void> deleteConversation(int conversationId) async {
-    await ref.read(conversationRepositoryProvider).deleteConversation(conversationId);
+    await ref
+        .read(conversationRepositoryProvider)
+        .deleteConversation(conversationId);
     if (ref.read(chatControllerProvider).conversationId == conversationId) {
-      ref.read(chatControllerProvider.notifier).openConversation(null);
+      unawaited(
+        ref.read(chatControllerProvider.notifier).openConversation(null),
+      );
     }
   }
 }
 
-final historyControllerProvider =
-    NotifierProvider<HistoryController, void>(HistoryController.new);
+final historyControllerProvider = NotifierProvider<HistoryController, void>(
+  HistoryController.new,
+);

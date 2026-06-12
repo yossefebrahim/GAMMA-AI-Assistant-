@@ -30,7 +30,11 @@ abstract interface class AudioRecorderService {
 /// The captured clip a [AudioRecorderService.stop] returns: a temp path in app cache (deleted by
 /// the controller on remove/replace/switch — nothing persists from a cancelled compose).
 class RecordedAudio {
-  const RecordedAudio({required this.path, this.mimeType, required this.durationMs});
+  const RecordedAudio({
+    required this.path,
+    this.mimeType,
+    required this.durationMs,
+  });
 
   /// App-cache temp file holding the WAV bytes.
   final String path;

@@ -65,13 +65,34 @@ abstract interface class GemmaService {
   /// capability — passing a non-empty [tools] while `capabilities.functionCalling == false` throws
   /// [StateError] synchronously (guarantee 18 — the spike's silent-trap closure: the plugin's FFI
   /// path injects declarations on `tools.isNotEmpty` ALONE, so a mismatch silently no-ops or spills
-  /// raw JSON). The seam derives `supportsFunctionCalls`, `tools`, and the tool system instruction
-  /// from ONE source — there is no representable state with one but not the others.
+  /// raw JSON). The seam derives `supportsFunctionCalls` and `tools` from ONE source — there is no
+  /// representable state with one but not the others.
+  ///
+  /// MEMORY / FACTS INJECTION (005, guarantee 26): [systemInstruction] is the fully-composed string
+  /// built by `SystemInstructionComposer` (facts block + capture instruction + tool-use instruction).
+  /// It is forwarded verbatim to `createChat(systemInstruction:)` → FFI `createConversation
+  /// (systemMessage:)` — a TRUE native system message, never a user-turn prepend. `null` means no
+  /// instruction (byte-parity guarantee 29). Composition happens OUTSIDE the seam so the seam has
+  /// no ToolRegistry dependency for the instruction string.
   Future<void> loadModel(
     String filePath, {
     ModelCapabilities capabilities = ModelCapabilities.textOnly,
     List<ToolSpec> tools = const [],
+    String? systemInstruction,
   });
+
+  /// Recreate the chat with a (possibly new) [systemInstruction] WITHOUT reloading the model
+  /// (005, guarantee 27). Called at each session boundary: conversation open (FR-008) and memory
+  /// toggle (FR-014).
+  ///
+  /// Closes the current session FIRST (the FFI cached-session caveat — a second `createChat` on the
+  /// same loaded model returns the cached session unless the prior one is closed; spike §1.2), then
+  /// calls `createChat` on the SAME loaded [_model] with the SAME tools/capabilities and the given
+  /// [systemInstruction]. Resets warm fingerprints and bumps the session epoch so the next
+  /// [generate] does a full replay (no stale native context).
+  ///
+  /// Throws [StateError] if no model is loaded (guarantee 27).
+  Future<void> startSession({String? systemInstruction});
 
   /// Generate a reply for [prompt] given prior [history], optionally grounded in [image] or
   /// [audio] for THIS prompt; [history] may itself contain media turns that are replayed as

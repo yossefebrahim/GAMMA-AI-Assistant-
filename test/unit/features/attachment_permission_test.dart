@@ -19,20 +19,24 @@ void main() {
   late ProviderContainer container;
 
   ProviderContainer build() => ProviderContainer(
-        overrides: [
-          mediaPickerServiceProvider.overrideWithValue(picker),
-          mediaPermissionServiceProvider.overrideWithValue(permission),
-          modelCapabilitiesProvider.overrideWith((ref) => const ModelCapabilities(image: true)),
-        ],
-      );
+    overrides: [
+      mediaPickerServiceProvider.overrideWithValue(picker),
+      mediaPermissionServiceProvider.overrideWithValue(permission),
+      modelCapabilitiesProvider.overrideWith(
+        (ref) => const ModelCapabilities(image: true),
+      ),
+    ],
+  );
 
   setUp(() {
-    picker = FakeMediaPickerService()..cameraResult = const PickedImage(path: '/tmp/cam.jpg');
+    picker = FakeMediaPickerService()
+      ..cameraResult = const PickedImage(path: '/tmp/cam.jpg');
   });
 
   tearDown(() => container.dispose());
 
-  AttachmentController controller() => container.read(attachmentControllerProvider.notifier);
+  AttachmentController controller() =>
+      container.read(attachmentControllerProvider.notifier);
   AttachmentState read() => container.read(attachmentControllerProvider);
 
   test('denied → request → granted proceeds to capture (FR-009)', () async {
@@ -49,65 +53,89 @@ void main() {
     expect(read().permissionPrompt, AttachmentPrompt.none);
   });
 
-  test('denied → request → still denied shows the explainer, no capture (FR-009)', () async {
-    permission = FakeMediaPermissionService(
-      status: MediaPermissionStatus.denied,
-      requestResults: [MediaPermissionStatus.denied],
-    );
-    container = build();
+  test(
+    'denied → request → still denied shows the explainer, no capture (FR-009)',
+    () async {
+      permission = FakeMediaPermissionService(
+        status: MediaPermissionStatus.denied,
+        requestResults: [MediaPermissionStatus.denied],
+      );
+      container = build();
 
-    await controller().pickFromCamera();
+      await controller().pickFromCamera();
 
-    expect(read().pending, isNull);
-    expect(read().permissionPrompt, AttachmentPrompt.permissionDenied);
-  });
+      expect(read().pending, isNull);
+      expect(read().permissionPrompt, AttachmentPrompt.permissionDenied);
+    },
+  );
 
-  test('permanentlyDenied routes to the settings explainer; openSettings() is invoked (FR-010)',
-      () async {
-    permission = FakeMediaPermissionService(status: MediaPermissionStatus.permanentlyDenied);
-    container = build();
+  test(
+    'permanentlyDenied routes to the settings explainer; openSettings() is invoked (FR-010)',
+    () async {
+      permission = FakeMediaPermissionService(
+        status: MediaPermissionStatus.permanentlyDenied,
+      );
+      container = build();
 
-    await controller().pickFromCamera();
-    expect(read().permissionPrompt, AttachmentPrompt.permissionPermanentlyDenied);
-    expect(picker.cameraCalls, 0, reason: 'no capture attempted without access');
+      await controller().pickFromCamera();
+      expect(
+        read().permissionPrompt,
+        AttachmentPrompt.permissionPermanentlyDenied,
+      );
+      expect(
+        picker.cameraCalls,
+        0,
+        reason: 'no capture attempted without access',
+      );
 
-    await controller().openSettings();
-    expect(permission.openSettingsCalls, 1);
-  });
+      await controller().openSettings();
+      expect(permission.openSettingsCalls, 1);
+    },
+  );
 
   test('restricted routes to the settings explainer (FR-010)', () async {
-    permission = FakeMediaPermissionService(status: MediaPermissionStatus.restricted);
-    container = build();
-
-    await controller().pickFromCamera();
-
-    expect(read().permissionPrompt, AttachmentPrompt.permissionPermanentlyDenied);
-  });
-
-  test('declining never dead-ends: the prompt is dismissible and leaves no pending (FR-011)',
-      () async {
     permission = FakeMediaPermissionService(
-      status: MediaPermissionStatus.denied,
-      requestResults: [MediaPermissionStatus.denied],
+      status: MediaPermissionStatus.restricted,
     );
     container = build();
 
     await controller().pickFromCamera();
-    expect(read().permissionPrompt, AttachmentPrompt.permissionDenied);
 
-    controller().dismissPrompt();
-    expect(read().permissionPrompt, AttachmentPrompt.none);
-    expect(read().pending, isNull);
+    expect(
+      read().permissionPrompt,
+      AttachmentPrompt.permissionPermanentlyDenied,
+    );
   });
 
-  test('a legacy library denial falls back to the explainer (FR-009)', () async {
-    permission = FakeMediaPermissionService();
-    picker.throwLibraryAccess = true;
-    container = build();
+  test(
+    'declining never dead-ends: the prompt is dismissible and leaves no pending (FR-011)',
+    () async {
+      permission = FakeMediaPermissionService(
+        status: MediaPermissionStatus.denied,
+        requestResults: [MediaPermissionStatus.denied],
+      );
+      container = build();
 
-    await controller().pickFromLibrary();
+      await controller().pickFromCamera();
+      expect(read().permissionPrompt, AttachmentPrompt.permissionDenied);
 
-    expect(read().permissionPrompt, AttachmentPrompt.permissionDenied);
-    expect(read().pending, isNull);
-  });
+      controller().dismissPrompt();
+      expect(read().permissionPrompt, AttachmentPrompt.none);
+      expect(read().pending, isNull);
+    },
+  );
+
+  test(
+    'a legacy library denial falls back to the explainer (FR-009)',
+    () async {
+      permission = FakeMediaPermissionService();
+      picker.throwLibraryAccess = true;
+      container = build();
+
+      await controller().pickFromLibrary();
+
+      expect(read().permissionPrompt, AttachmentPrompt.permissionDenied);
+      expect(read().pending, isNull);
+    },
+  );
 }

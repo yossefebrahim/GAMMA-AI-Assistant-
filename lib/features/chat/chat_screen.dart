@@ -67,13 +67,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     return Scaffold(
       appBar: AppBar(
         titleSpacing: AppSpacing.s16,
-        title: Text(AppText.spec('${ModelCatalog.displayName} · on-device'),
-            style: theme.textTheme.labelSmall),
+        title: Text(
+          AppText.spec('${ModelCatalog.displayName} · on-device'),
+          style: theme.textTheme.labelSmall,
+        ),
         actions: [
           IconButton(
             tooltip: 'new conversation',
             icon: const Icon(Icons.add),
-            onPressed: () => ref.read(chatControllerProvider.notifier).openConversation(null),
+            onPressed: () => ref
+                .read(chatControllerProvider.notifier)
+                .openConversation(null),
           ),
           IconButton(
             tooltip: 'history',
@@ -83,7 +87,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           IconButton(
             tooltip: 'settings',
             icon: const Icon(Icons.settings_outlined),
-            onPressed: () => Navigator.of(context).pushNamed(AppRoutes.settings),
+            onPressed: () =>
+                Navigator.of(context).pushNamed(AppRoutes.settings),
           ),
         ],
         bottom: const PreferredSize(
@@ -112,7 +117,10 @@ class _ModelLoading extends StatelessWidget {
         children: [
           const DotPulse(),
           const SizedBox(height: AppSpacing.s16),
-          Text(AppText.spec('loading model…'), style: theme.textTheme.labelSmall),
+          Text(
+            AppText.spec('loading model…'),
+            style: theme.textTheme.labelSmall,
+          ),
         ],
       ),
     );
@@ -134,7 +142,9 @@ class _ModelError extends StatelessWidget {
         child: Text(
           'could not load the model on this device.',
           textAlign: TextAlign.center,
-          style: theme.textTheme.bodyLarge?.copyWith(color: colors.textSecondary),
+          style: theme.textTheme.bodyLarge?.copyWith(
+            color: colors.textSecondary,
+          ),
         ),
       ),
     );
@@ -170,20 +180,29 @@ class _ChatBodyState extends ConsumerState<_ChatBody> {
 
   @override
   Widget build(BuildContext context) {
-    final conversationId = ref.watch(chatControllerProvider.select((s) => s.conversationId));
-    final errorMessage = ref.watch(chatControllerProvider.select((s) => s.errorMessage));
+    final conversationId = ref.watch(
+      chatControllerProvider.select((s) => s.conversationId),
+    );
+    final errorMessage = ref.watch(
+      chatControllerProvider.select((s) => s.errorMessage),
+    );
 
     return Column(
       children: [
         Expanded(
           child: conversationId == null
               ? const _EmptyChat()
-              : _MessageList(conversationId: conversationId, scroll: _scroll, onChanged: _scrollToBottom),
+              : _MessageList(
+                  conversationId: conversationId,
+                  scroll: _scroll,
+                  onChanged: _scrollToBottom,
+                ),
         ),
         if (errorMessage != null)
           _ErrorBanner(
             message: errorMessage,
-            onDismiss: () => ref.read(chatControllerProvider.notifier).dismissError(),
+            onDismiss: () =>
+                ref.read(chatControllerProvider.notifier).dismissError(),
           ),
         const Padding(
           padding: EdgeInsets.fromLTRB(
@@ -213,8 +232,16 @@ class _ErrorBanner extends StatelessWidget {
     final colors = theme.extension<AppColors>()!;
     return Container(
       key: ChatScreen.errorBannerKey,
-      margin: const EdgeInsets.fromLTRB(AppSpacing.s16, AppSpacing.s8, AppSpacing.s16, 0),
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.s12, vertical: AppSpacing.s8),
+      margin: const EdgeInsets.fromLTRB(
+        AppSpacing.s16,
+        AppSpacing.s8,
+        AppSpacing.s16,
+        0,
+      ),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.s12,
+        vertical: AppSpacing.s8,
+      ),
       decoration: BoxDecoration(
         color: colors.surfaceContainer,
         borderRadius: BorderRadius.circular(AppSpacing.radiusControl),
@@ -227,7 +254,9 @@ class _ErrorBanner extends StatelessWidget {
           Expanded(
             child: Text(
               message,
-              style: theme.textTheme.bodyMedium?.copyWith(color: colors.textSecondary),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: colors.textSecondary,
+              ),
             ),
           ),
           IconButton(
@@ -294,9 +323,15 @@ class _EmptyChat extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text('gemma', style: AppText.dotMatrix(fontSize: 40, color: colors.textPrimary)),
+          Text(
+            'gemma',
+            style: AppText.dotMatrix(fontSize: 40, color: colors.textPrimary),
+          ),
           const SizedBox(height: AppSpacing.s8),
-          Text('ask anything. it stays on your device.', style: theme.textTheme.bodyMedium),
+          Text(
+            'ask anything. it stays on your device.',
+            style: theme.textTheme.bodyMedium,
+          ),
         ],
       ),
     );

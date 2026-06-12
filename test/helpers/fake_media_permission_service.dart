@@ -15,8 +15,12 @@ class FakeMediaPermissionService implements MediaPermissionService {
     List<MediaPermissionStatus>? requestResults,
     this.micStatusValue = MediaPermissionStatus.granted,
     List<MediaPermissionStatus>? micRequestResults,
-  })  : requestResults = requestResults ?? <MediaPermissionStatus>[],
-        micRequestResults = micRequestResults ?? <MediaPermissionStatus>[];
+    this.storageStatusValue = MediaPermissionStatus.granted,
+    List<MediaPermissionStatus>? storageRequestResults,
+  }) : requestResults = requestResults ?? <MediaPermissionStatus>[],
+       micRequestResults = micRequestResults ?? <MediaPermissionStatus>[],
+       storageRequestResults =
+           storageRequestResults ?? <MediaPermissionStatus>[];
 
   /// Status returned by [cameraStatus].
   MediaPermissionStatus status;
@@ -32,11 +36,21 @@ class FakeMediaPermissionService implements MediaPermissionService {
   List<MediaPermissionStatus> micRequestResults;
   int _micRequestIndex = 0;
 
+  /// Status returned by [storageStatus] (all-files access for the model store).
+  MediaPermissionStatus storageStatusValue;
+
+  /// Successive results returned by [requestStorage], in order (then falls back to
+  /// [storageStatusValue]) so a `denied → granted` sequence is scriptable.
+  List<MediaPermissionStatus> storageRequestResults;
+  int _storageRequestIndex = 0;
+
   // --- call recorders ---
   int statusCalls = 0;
   int requestCalls = 0;
   int micStatusCalls = 0;
   int micRequestCalls = 0;
+  int storageStatusCalls = 0;
+  int storageRequestCalls = 0;
   int openSettingsCalls = 0;
 
   @override
@@ -67,6 +81,21 @@ class FakeMediaPermissionService implements MediaPermissionService {
       return micRequestResults[_micRequestIndex++];
     }
     return micStatusValue;
+  }
+
+  @override
+  Future<MediaPermissionStatus> storageStatus() async {
+    storageStatusCalls++;
+    return storageStatusValue;
+  }
+
+  @override
+  Future<MediaPermissionStatus> requestStorage() async {
+    storageRequestCalls++;
+    if (_storageRequestIndex < storageRequestResults.length) {
+      return storageRequestResults[_storageRequestIndex++];
+    }
+    return storageStatusValue;
   }
 
   @override

@@ -33,39 +33,49 @@ void main() {
   tearDown(() => container.dispose());
 
   Widget app() => UncontrolledProviderScope(
-        container: container,
-        child: MaterialApp(
-          theme: AppTheme.light,
-          darkTheme: AppTheme.dark,
-          themeMode: ThemeMode.dark,
-          home: const ChatScreen(),
-        ),
+    container: container,
+    child: MaterialApp(
+      theme: AppTheme.light,
+      darkTheme: AppTheme.dark,
+      themeMode: ThemeMode.dark,
+      home: const ChatScreen(),
+    ),
+  );
+
+  testWidgets(
+    'an unprocessable input shows a dismissible message; the composer stays usable '
+    '(FR-020, SC-008)',
+    (tester) async {
+      await tester.pumpWidget(app());
+      await tester.pump(); // resolve the model session
+
+      await tester.enterText(find.byKey(Composer.fieldKey), 'what is this');
+      await tester.pump();
+      await tester.tap(find.byKey(Composer.sendKey));
+      await tester
+          .pump(); // drain the send → ImageProcessingException → error state
+      await tester.pump(
+        const Duration(milliseconds: 350),
+      ); // drain the scroll animation
+
+      // A clear error banner appears with the message.
+      expect(find.byKey(ChatScreen.errorBannerKey), findsOneWidget);
+      expect(find.text(ChatController.imageErrorMessage), findsOneWidget);
+
+      // It is dismissible.
+      await tester.tap(find.byKey(ChatScreen.errorDismissKey));
+      await tester.pump();
+      expect(find.byKey(ChatScreen.errorBannerKey), findsNothing);
+
+      // The composer stays usable — chat never dead-ends (FR-011/FR-020).
+      expect(find.byKey(Composer.fieldKey), findsOneWidget);
+      await tester.enterText(find.byKey(Composer.fieldKey), 'still works');
+      await tester.pump();
+      expect(
+        tester.widget<IconButton>(find.byKey(Composer.sendKey)).onPressed,
+        isNotNull,
       );
-
-  testWidgets('an unprocessable input shows a dismissible message; the composer stays usable '
-      '(FR-020, SC-008)', (tester) async {
-    await tester.pumpWidget(app());
-    await tester.pump(); // resolve the model session
-
-    await tester.enterText(find.byKey(Composer.fieldKey), 'what is this');
-    await tester.pump();
-    await tester.tap(find.byKey(Composer.sendKey));
-    await tester.pump(); // drain the send → ImageProcessingException → error state
-    await tester.pump(const Duration(milliseconds: 350)); // drain the scroll animation
-
-    // A clear error banner appears with the message.
-    expect(find.byKey(ChatScreen.errorBannerKey), findsOneWidget);
-    expect(find.text(ChatController.imageErrorMessage), findsOneWidget);
-
-    // It is dismissible.
-    await tester.tap(find.byKey(ChatScreen.errorDismissKey));
-    await tester.pump();
-    expect(find.byKey(ChatScreen.errorBannerKey), findsNothing);
-
-    // The composer stays usable — chat never dead-ends (FR-011/FR-020).
-    expect(find.byKey(Composer.fieldKey), findsOneWidget);
-    await tester.enterText(find.byKey(Composer.fieldKey), 'still works');
-    await tester.pump();
-    expect(tester.widget<IconButton>(find.byKey(Composer.sendKey)).onPressed, isNotNull);
-  }, timeout: const Timeout(Duration(seconds: 60)));
+    },
+    timeout: const Timeout(Duration(seconds: 60)),
+  );
 }

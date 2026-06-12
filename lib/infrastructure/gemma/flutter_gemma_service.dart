@@ -1,4 +1,3 @@
-import 'package:ai_assistant/core/tools/tool_registry.dart';
 import 'package:ai_assistant/domain/entities/audio_input.dart';
 import 'package:ai_assistant/domain/entities/chat_turn.dart';
 import 'package:ai_assistant/domain/entities/generation_event.dart';
@@ -74,6 +73,12 @@ class FlutterGemmaService implements GemmaService {
   /// filter and resume discipline derive from (guarantee 18 structural coupling).
   bool _supportsFunctionCalls = false;
 
+  /// The tool specs and capabilities that were active when the current [_chat] was created. Stored
+  /// so [startSession] can recreate the chat with the SAME tools/capabilities but a new instruction
+  /// (guarantee 27 — same model, same tools, new facts block).
+  List<ToolSpec> _activeChatTools = const [];
+  ModelCapabilities _activeChatCapabilities = ModelCapabilities.textOnly;
+
   /// True between a [ToolCallRequested]-terminated stream and its [resumeWithToolResult] — gates
   /// the one-allowed round trip (guarantee 22). Resume outside this window is a programmer error.
   bool _awaitingToolResult = false;
@@ -114,6 +119,7 @@ class FlutterGemmaService implements GemmaService {
     String filePath, {
     ModelCapabilities capabilities = ModelCapabilities.textOnly,
     List<ToolSpec> tools = const [],
+    String? systemInstruction,
   }) async {
     // Guarantee 18 — the silent-trap closure (spike §1.3): tool declarations without the
     // capability are unrepresentable. Checked BEFORE close() so it is a pure, state-free contract
@@ -121,8 +127,9 @@ class FlutterGemmaService implements GemmaService {
     // failure).
     if (tools.isNotEmpty && !capabilities.functionCalling) {
       throw StateError(
-          'loadModel(tools:) requires capabilities.functionCalling — refusing the silent-trap '
-          'combination (ungated tools would spill raw JSON / no-op)');
+        'loadModel(tools:) requires capabilities.functionCalling — refusing the silent-trap '
+        'combination (ungated tools would spill raw JSON / no-op)',
+      );
     }
     // Release any previously-loaded model first → exactly one active (Principle VIII).
     await close();
@@ -135,10 +142,17 @@ class FlutterGemmaService implements GemmaService {
 
       // Prefer GPU; fall back to CPU if the backend can't initialize / OOMs on an 8 GB device (R1).
       _lastActivationError = null;
-      _model = await _activate(PreferredBackend.gpu,
-              supportImage: capabilities.image, supportAudio: capabilities.audio) ??
-          await _activate(PreferredBackend.cpu,
-              supportImage: capabilities.image, supportAudio: capabilities.audio);
+      _model =
+          await _activate(
+            PreferredBackend.gpu,
+            supportImage: capabilities.image,
+            supportAudio: capabilities.audio,
+          ) ??
+          await _activate(
+            PreferredBackend.cpu,
+            supportImage: capabilities.image,
+            supportAudio: capabilities.audio,
+          );
       if (_model == null) {
         throw ModelLoadException(
           'could not initialize a backend for the model',
@@ -146,28 +160,12 @@ class FlutterGemmaService implements GemmaService {
         );
       }
 
-      // Structural coupling (guarantee 18 / R5): tools, supportsFunctionCalls, and the tool system
-      // instruction ALL derive from `capabilities.functionCalling`. When off, the inputs are
-      // byte-identical to 003 (guarantee 19): empty tools, flag false, no instruction.
-      final functionCalling = capabilities.functionCalling;
-      final pluginTools = functionCalling
-          ? [for (final spec in tools) _toPluginTool(spec)]
-          : const <Tool>[];
-      final systemInstruction =
-          functionCalling && pluginTools.isNotEmpty ? ToolRegistry.systemInstruction : null;
-      _supportsFunctionCalls = functionCalling;
-
-      _chat = await _model!.createChat(
-        modelType: ModelType.gemma4,
-        supportImage: capabilities.image,
-        supportAudio: capabilities.audio,
-        supportsFunctionCalls: functionCalling,
-        tools: pluginTools,
-        toolChoice: ToolChoice.auto,
-        systemInstruction: systemInstruction,
-        isThinking: false,
-      );
+      // Create the chat via the shared helper (F5): tools / supportsFunctionCalls / system
+      // instruction all derive from one source so they can never desync (guarantee 18 / 26 / 29).
+      _chat = await _createChat(capabilities, tools, systemInstruction);
       _capabilities = capabilities;
+      _activeChatTools = tools;
+      _activeChatCapabilities = capabilities;
       _loaded = true;
     } on ModelLoadException {
       await close();
@@ -176,6 +174,68 @@ class FlutterGemmaService implements GemmaService {
       await close();
       throw ModelLoadException('failed to load model', cause: error);
     }
+  }
+
+  @override
+  Future<void> startSession({String? systemInstruction}) async {
+    // Guarantee 27: must have a loaded model to recreate the chat.
+    if (!_loaded || _model == null) {
+      throw StateError('startSession() called before a model was loaded');
+    }
+
+    // FFI cached-session caveat (spike §1.2): a second createChat on the same loaded model returns
+    // the CACHED native session unless the prior session is closed first. Close it now so the new
+    // createChat always gets a fresh native conversation with the new systemInstruction.
+    await _chat?.session.close();
+    _chat = null;
+
+    // Reset warm-session state: the next generate must do a full clearHistory replay (there is no
+    // prior context in the newly created session).
+    _sessionTurns = null;
+    _sessionEpoch++;
+    _awaitingToolResult = false;
+
+    // Recreate on the SAME loaded model with the SAME tools/capabilities and the new instruction
+    // (guarantee 27 — no model reload, no re-mmap). If recreation throws (e.g. OOM), fall back to a
+    // full unload so the seam never reports `isLoaded == true` with a null chat (matches
+    // loadModel's honest-state contract): callers see an unloaded service and can reload.
+    try {
+      _chat = await _createChat(
+        _activeChatCapabilities,
+        _activeChatTools,
+        systemInstruction,
+      );
+    } catch (_) {
+      await close();
+      rethrow;
+    }
+  }
+
+  /// Create the native chat from [capabilities] + [tools] + [systemInstruction], setting
+  /// [_supportsFunctionCalls] from the same source so the leak filter / resume discipline can never
+  /// desync (guarantee 18). Shared verbatim by [loadModel] and [startSession] (F5 — one createChat
+  /// call site). The systemInstruction is composed OUTSIDE the seam (guarantee 26 / 005) and
+  /// forwarded as-is; null ⇒ none.
+  Future<InferenceChat> _createChat(
+    ModelCapabilities capabilities,
+    List<ToolSpec> tools,
+    String? systemInstruction,
+  ) async {
+    final functionCalling = capabilities.functionCalling;
+    final pluginTools = functionCalling
+        ? [for (final spec in tools) _toPluginTool(spec)]
+        : const <Tool>[];
+    _supportsFunctionCalls = functionCalling;
+    return _model!.createChat(
+      modelType: ModelType.gemma4,
+      supportImage: capabilities.image,
+      supportAudio: capabilities.audio,
+      supportsFunctionCalls: functionCalling,
+      tools: pluginTools,
+      toolChoice: ToolChoice.auto,
+      systemInstruction: systemInstruction,
+      isThinking: false,
+    );
   }
 
   Future<InferenceModel?> _activate(
@@ -202,8 +262,11 @@ class FlutterGemmaService implements GemmaService {
   }
 
   /// Map a domain [ToolSpec] to the plugin's `Tool` (the only place the two types meet).
-  Tool _toPluginTool(ToolSpec spec) =>
-      Tool(name: spec.name, description: spec.description, parameters: spec.parameters);
+  Tool _toPluginTool(ToolSpec spec) => Tool(
+    name: spec.name,
+    description: spec.description,
+    parameters: spec.parameters,
+  );
 
   @override
   Stream<GenerationEvent> generate({
@@ -222,20 +285,28 @@ class FlutterGemmaService implements GemmaService {
       throw StateError('generate() called with no model loaded');
     }
     if (image != null && !_capabilities.image) {
-      throw StateError('generate(image:) called while the model does not support images');
+      throw StateError(
+        'generate(image:) called while the model does not support images',
+      );
     }
     // The audio gate is LOAD-BEARING (003 guarantee 13): the plugin's FFI path silently drops audio
     // that wasn't enabled at load.
     if (audio != null && !_capabilities.audio) {
-      throw StateError('generate(audio:) called while the model does not support audio');
+      throw StateError(
+        'generate(audio:) called while the model does not support audio',
+      );
     }
 
-    final involvesImage = image != null || history.any((turn) => turn.image != null);
+    final involvesImage =
+        image != null || history.any((turn) => turn.image != null);
 
     // A tool turn anywhere in the conversation forces a full replay (the resume path mutates the
     // native session in ways the warm fingerprints don't track — correctness over the optimization).
-    final fingerprints = [for (final turn in history) _TurnFingerprint.ofTurn(turn)];
-    final warm = !history.any((turn) => turn.isTool) && _matchesSession(fingerprints);
+    final fingerprints = [
+      for (final turn in history) _TurnFingerprint.ofTurn(turn),
+    ];
+    final warm =
+        !history.any((turn) => turn.isTool) && _matchesSession(fingerprints);
     _sessionTurns = null;
     final epoch = _sessionEpoch;
     _awaitingToolResult = false;
@@ -266,7 +337,10 @@ class FlutterGemmaService implements GemmaService {
           sawToolCall = true;
           filter.discardOnToolCall();
           _awaitingToolResult = true;
-          yield ToolCallRequested(response.name, Map<String, Object?>.from(response.args));
+          yield ToolCallRequested(
+            response.name,
+            Map<String, Object?>.from(response.args),
+          );
         } else if (response is ParallelFunctionCallResponse) {
           // Parallel calls collapse to ONE event: first + extraCallCount (FR-006/FR-024 handled by
           // the controller).
@@ -304,16 +378,26 @@ class FlutterGemmaService implements GemmaService {
             audioByteLength: audio?.bytes.length,
           ),
           _TurnFingerprint(
-              isUser: false, text: reply.toString(), imageByteLength: null, audioByteLength: null),
+            isUser: false,
+            text: reply.toString(),
+            imageByteLength: null,
+            audioByteLength: null,
+          ),
         ];
       }
     } catch (error) {
       if (error is StateError) rethrow;
       if (audio != null) {
-        throw AudioProcessingException('could not process the audio', cause: error);
+        throw AudioProcessingException(
+          'could not process the audio',
+          cause: error,
+        );
       }
       if (involvesImage) {
-        throw ImageProcessingException('could not process the image', cause: error);
+        throw ImageProcessingException(
+          'could not process the image',
+          cause: error,
+        );
       }
       rethrow;
     }
@@ -330,7 +414,9 @@ class FlutterGemmaService implements GemmaService {
     }
     // Guarantee 22 — resume is valid exactly once, only after a tool-call-terminated stream.
     if (!_awaitingToolResult) {
-      throw StateError('resumeWithToolResult() called outside an in-flight tool turn');
+      throw StateError(
+        'resumeWithToolResult() called outside an in-flight tool turn',
+      );
     }
     _awaitingToolResult = false;
     // A tool turn leaves the session dirty: the next send does a full replay (the call+response are
@@ -340,7 +426,9 @@ class FlutterGemmaService implements GemmaService {
     final filter = LeakFilter(active: _supportsFunctionCalls);
     try {
       // The plugin reaches the model as a user-role `<tool_response>` block on Android/.litertlm.
-      await chat.addQuery(Message.toolResponse(toolName: toolName, response: result));
+      await chat.addQuery(
+        Message.toolResponse(toolName: toolName, response: result),
+      );
       await for (final response in chat.generateChatResponseAsync()) {
         if (response is TextResponse) {
           final emit = filter.process(response.token);
@@ -349,7 +437,10 @@ class FlutterGemmaService implements GemmaService {
           // A SECOND call on resume is surfaced, not executed (the controller chips-and-skips it,
           // FR-006/FR-024).
           filter.discardOnToolCall();
-          yield ToolCallRequested(response.name, Map<String, Object?>.from(response.args));
+          yield ToolCallRequested(
+            response.name,
+            Map<String, Object?>.from(response.args),
+          );
         } else if (response is ParallelFunctionCallResponse) {
           filter.discardOnToolCall();
           final calls = response.calls;
@@ -387,9 +478,15 @@ class FlutterGemmaService implements GemmaService {
       // honestly (data-model §3). The raw-JSON reconstruction is the pure, unit-tested helper.
       return [
         Message.toolCall(
-            text: reconstructToolCallJson(turn.toolName!, turn.toolArgs ?? const {})),
+          text: reconstructToolCallJson(
+            turn.toolName!,
+            turn.toolArgs ?? const {},
+          ),
+        ),
         Message.toolResponse(
-            toolName: turn.toolName!, response: turn.toolResult ?? const {}),
+          toolName: turn.toolName!,
+          response: turn.toolResult ?? const {},
+        ),
       ];
     }
     return [_toPluginMessage(turn)];
@@ -404,7 +501,11 @@ class FlutterGemmaService implements GemmaService {
       if (turn.text.isEmpty) {
         return Message.audioOnly(audioBytes: audio.bytes, isUser: turn.isUser);
       }
-      return Message.withAudio(text: turn.text, audioBytes: audio.bytes, isUser: turn.isUser);
+      return Message.withAudio(
+        text: turn.text,
+        audioBytes: audio.bytes,
+        isUser: turn.isUser,
+      );
     }
     if (image == null) {
       return Message.text(text: turn.text, isUser: turn.isUser);
@@ -412,7 +513,11 @@ class FlutterGemmaService implements GemmaService {
     if (turn.text.isEmpty) {
       return Message.imageOnly(imageBytes: image.bytes, isUser: turn.isUser);
     }
-    return Message.withImage(text: turn.text, imageBytes: image.bytes, isUser: turn.isUser);
+    return Message.withImage(
+      text: turn.text,
+      imageBytes: image.bytes,
+      isUser: turn.isUser,
+    );
   }
 
   /// Build the current prompt message: text-only, media+text, or media-only (empty text, FR-004).
@@ -421,7 +526,11 @@ class FlutterGemmaService implements GemmaService {
       if (prompt.isEmpty) {
         return Message.audioOnly(audioBytes: audio.bytes, isUser: true);
       }
-      return Message.withAudio(text: prompt, audioBytes: audio.bytes, isUser: true);
+      return Message.withAudio(
+        text: prompt,
+        audioBytes: audio.bytes,
+        isUser: true,
+      );
     }
     if (image == null) {
       return Message.text(text: prompt, isUser: true);
@@ -429,7 +538,11 @@ class FlutterGemmaService implements GemmaService {
     if (prompt.isEmpty) {
       return Message.imageOnly(imageBytes: image.bytes, isUser: true);
     }
-    return Message.withImage(text: prompt, imageBytes: image.bytes, isUser: true);
+    return Message.withImage(
+      text: prompt,
+      imageBytes: image.bytes,
+      isUser: true,
+    );
   }
 
   @override
@@ -470,12 +583,12 @@ class _TurnFingerprint {
   });
 
   _TurnFingerprint.ofTurn(ChatTurn turn)
-      : this(
-          isUser: turn.isUser,
-          text: turn.text,
-          imageByteLength: turn.image?.bytes.length,
-          audioByteLength: turn.audio?.bytes.length,
-        );
+    : this(
+        isUser: turn.isUser,
+        text: turn.text,
+        imageByteLength: turn.image?.bytes.length,
+        audioByteLength: turn.audio?.bytes.length,
+      );
 
   final bool isUser;
   final String text;
@@ -491,7 +604,8 @@ class _TurnFingerprint {
       other.audioByteLength == audioByteLength;
 
   @override
-  int get hashCode => Object.hash(isUser, text, imageByteLength, audioByteLength);
+  int get hashCode =>
+      Object.hash(isUser, text, imageByteLength, audioByteLength);
 }
 
 /// Kept-alive [GemmaService] (R5) — never auto-disposed, so the ~2.4 GB model doesn't thrash on

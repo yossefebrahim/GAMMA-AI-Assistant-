@@ -43,7 +43,9 @@ class ToolChip extends StatelessWidget {
     };
 
     final chip = Container(
-      constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.82),
+      constraints: BoxConstraints(
+        maxWidth: MediaQuery.sizeOf(context).width * 0.82,
+      ),
       padding: const EdgeInsets.symmetric(
         horizontal: AppSpacing.s12,
         vertical: AppSpacing.s8,
@@ -65,7 +67,11 @@ class ToolChip extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               if (isError) ...[
-                Icon(Icons.error_outline, size: AppSpacing.s16, color: colors.accent),
+                Icon(
+                  Icons.error_outline,
+                  size: AppSpacing.s16,
+                  color: colors.accent,
+                ),
                 const SizedBox(width: AppSpacing.s4),
               ],
               Flexible(
@@ -84,7 +90,9 @@ class ToolChip extends StatelessWidget {
             Text(
               AppText.spec(argsSummary),
               key: ToolChip.argsKey,
-              style: theme.textTheme.labelSmall?.copyWith(color: colors.textSecondary),
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: colors.textSecondary,
+              ),
             ),
           ],
           if (isRunning) ...[
@@ -99,7 +107,9 @@ class ToolChip extends StatelessWidget {
             Text(
               line,
               key: ToolChip.contentKey,
-              style: theme.textTheme.bodyMedium?.copyWith(color: colors.textSecondary),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: colors.textSecondary,
+              ),
             ),
           ],
         ],

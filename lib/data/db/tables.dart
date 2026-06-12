@@ -1,8 +1,8 @@
 import 'package:drift/drift.dart';
 
 // Generated drift row classes are renamed (`*Row`) so they never collide with the pure-Dart
-// domain entities (Conversation, Message, ModelInstall, AppSettings). The repository layer maps
-// between rows and entities. Schema mirrors data-model.md.
+// domain entities (Conversation, Message, ModelInstall, AppSettings, Memory). The repository layer
+// maps between rows and entities. Schema mirrors data-model.md.
 
 @DataClassName('ConversationRow')
 class Conversations extends Table {
@@ -18,7 +18,10 @@ class Conversations extends Table {
 }
 
 @DataClassName('MessageRow')
-@TableIndex(name: 'idx_messages_conversation', columns: {#conversationId, #sequence})
+@TableIndex(
+  name: 'idx_messages_conversation',
+  columns: {#conversationId, #sequence},
+)
 class Messages extends Table {
   IntColumn get id => integer().autoIncrement()();
 
@@ -106,6 +109,48 @@ class AppSettingsTable extends Table {
 
   DateTimeColumn get licenseAcknowledgedAt => dateTime().nullable()();
 
+  /// Whether durable memory is on (005, schema v5). Default **true** (Clarifications Q3); when off,
+  /// facts are neither captured nor injected (management still works, FR-016). Added by the v4→v5
+  /// migration with a default of 1 so the existing single row stays valid (data-model §2).
+  BoolColumn get memoryEnabled => boolean().withDefault(const Constant(true))();
+
   @override
   Set<Column<Object>> get primaryKey => {id};
+}
+
+/// Durable, app-global facts about the user (005, schema v5). Only `active` rows are injected into
+/// the model's system message or shown in settings; supersede/forget/clear flip `active` to false
+/// (soft-delete, data-model §2/§3). Facts outlive the conversation they were captured in —
+/// `sourceConversationId` is `ON DELETE SET NULL`, NOT cascade (Clarifications Q1).
+@DataClassName('MemoryRow')
+@TableIndex(
+  name: 'idx_memories_active',
+  columns: {#active, #category, #updatedAt},
+)
+class Memories extends Table {
+  IntColumn get id => integer().autoIncrement()();
+
+  /// Short canonical third-person statement about the user; ≤ 80 chars (R4, validated on capture).
+  TextColumn get fact => text()();
+
+  /// `MemoryCategory.name` — 'identity' | 'work' | 'preferences' | 'other'. Drives grouping in the
+  /// injected facts block and the settings screen (the same set, FR-015).
+  TextColumn get category => text()();
+
+  DateTimeColumn get createdAt => dateTime()();
+
+  /// Refreshed on supersede/edit; the recency key for block ordering + cap (data-model §1/§3).
+  DateTimeColumn get updatedAt => dateTime()();
+
+  /// Soft-delete / supersede flag — only `active` rows are injected or listed (default true).
+  BoolColumn get active => boolean().withDefault(const Constant(true))();
+
+  /// The conversation it was captured in; null for manually-added facts. `ON DELETE SET NULL` so
+  /// deleting a conversation keeps the fact but nulls provenance (facts are durable/app-global —
+  /// contrast with messages, which cascade-delete with their conversation).
+  IntColumn get sourceConversationId => integer().nullable().references(
+    Conversations,
+    #id,
+    onDelete: KeyAction.setNull,
+  )();
 }

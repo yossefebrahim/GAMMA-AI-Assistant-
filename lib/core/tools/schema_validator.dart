@@ -31,7 +31,8 @@ final class InvalidT extends ValidationResult {
 ///    `required` (a list of property names);
 ///  * primitive property types `string | integer | number | boolean`;
 ///  * `enum` (a closed list of allowed values) on a property;
-///  * integer `minimum` / `maximum` bounds (inclusive).
+///  * integer `minimum` / `maximum` bounds (inclusive);
+///  * string `maxLength` (inclusive upper bound on character count — R5 memory fact cap).
 ///
 /// **Strict mode**: unknown argument keys are REJECTED (a hallucinated argument is a model error
 /// the chip should surface, not silently drop — R3). Anything in a *schema* outside this subset is
@@ -41,14 +42,19 @@ final class InvalidT extends ValidationResult {
 class SchemaValidator {
   const SchemaValidator();
 
-  ValidationResult validate(Map<String, Object?> schema, Map<String, Object?> args) {
+  ValidationResult validate(
+    Map<String, Object?> schema,
+    Map<String, Object?> args,
+  ) {
     if (schema['type'] != 'object') {
       return const ValidationResult.invalid('schema root must be type: object');
     }
 
-    final properties = (schema['properties'] as Map?)?.cast<String, Object?>() ??
+    final properties =
+        (schema['properties'] as Map?)?.cast<String, Object?>() ??
         const <String, Object?>{};
-    final required = (schema['required'] as List?)?.cast<String>() ?? const <String>[];
+    final required =
+        (schema['required'] as List?)?.cast<String>() ?? const <String>[];
 
     // Strict: every supplied key must be a declared property (R3 — unknown keys surface, never
     // silently dropped).
@@ -67,7 +73,8 @@ class SchemaValidator {
 
     // Validate each supplied property against its declared schema.
     for (final entry in args.entries) {
-      final propSchema = (properties[entry.key] as Map?)?.cast<String, Object?>();
+      final propSchema = (properties[entry.key] as Map?)
+          ?.cast<String, Object?>();
       if (propSchema == null) {
         return ValidationResult.invalid('argument ${entry.key} has no schema');
       }
@@ -97,6 +104,12 @@ class SchemaValidator {
         if (value is! String) {
           return ValidationResult.invalid('argument $name must be a string');
         }
+        final maxLength = propSchema['maxLength'];
+        if (maxLength is int && value.length > maxLength) {
+          return ValidationResult.invalid(
+            'argument $name exceeds $maxLength characters',
+          );
+        }
       case 'boolean':
         if (value is! bool) {
           return ValidationResult.invalid('argument $name must be a boolean');
@@ -122,10 +135,14 @@ class SchemaValidator {
       case null:
         // No type and no enum: nothing to assert (enum-only properties already checked above).
         if (allowed == null) {
-          return ValidationResult.invalid('argument $name has no type or enum in its schema');
+          return ValidationResult.invalid(
+            'argument $name has no type or enum in its schema',
+          );
         }
       default:
-        return ValidationResult.invalid('argument $name has unsupported type: $type');
+        return ValidationResult.invalid(
+          'argument $name has unsupported type: $type',
+        );
     }
 
     return const ValidationResult.valid();

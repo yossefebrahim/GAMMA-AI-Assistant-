@@ -26,7 +26,10 @@ class HistoryScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(AppText.spec('conversations'), style: theme.textTheme.labelSmall),
+        title: Text(
+          AppText.spec('conversations'),
+          style: theme.textTheme.labelSmall,
+        ),
         actions: [
           IconButton(
             key: newConversationKey,
@@ -51,7 +54,8 @@ class HistoryScreen extends ConsumerWidget {
           return ListView.separated(
             itemCount: list.length,
             separatorBuilder: (_, _) => const Divider(height: 1),
-            itemBuilder: (context, index) => _ConversationRow(conversation: list[index]),
+            itemBuilder: (context, index) =>
+                _ConversationRow(conversation: list[index]),
           );
         },
       ),
@@ -78,7 +82,10 @@ class _ConversationRow extends ConsumerWidget {
     final colors = theme.extension<AppColors>()!;
     return ListTile(
       key: HistoryScreen.rowKey(conversation.id),
-      contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.s16, vertical: AppSpacing.s4),
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.s16,
+        vertical: AppSpacing.s4,
+      ),
       title: Text(
         conversation.title ?? 'untitled',
         maxLines: 1,
@@ -90,7 +97,9 @@ class _ConversationRow extends ConsumerWidget {
         child: Text(
           AppText.spec(_formatTimestamp(conversation.updatedAt)),
           // AA rule (research R6 / FR-031): essential timestamps use textSecondary, not textMuted.
-          style: theme.textTheme.labelSmall?.copyWith(color: colors.textSecondary),
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: colors.textSecondary,
+          ),
         ),
       ),
       trailing: IconButton(
@@ -100,7 +109,9 @@ class _ConversationRow extends ConsumerWidget {
         onPressed: () => _confirmDelete(context, ref),
       ),
       onTap: () {
-        ref.read(historyControllerProvider.notifier).openConversation(conversation.id);
+        ref
+            .read(historyControllerProvider.notifier)
+            .openConversation(conversation.id);
         HistoryScreen._goToChat(context);
       },
     );
@@ -115,7 +126,9 @@ class _ConversationRow extends ConsumerWidget {
         title: Text('delete conversation?', style: theme.textTheme.titleMedium),
         content: Text(
           'this removes the conversation and its messages. it cannot be undone.',
-          style: theme.textTheme.bodyMedium?.copyWith(color: colors.textSecondary),
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: colors.textSecondary,
+          ),
         ),
         actions: [
           TextButton(
@@ -133,14 +146,26 @@ class _ConversationRow extends ConsumerWidget {
       ),
     );
     if (confirmed ?? false) {
-      await ref.read(historyControllerProvider.notifier).deleteConversation(conversation.id);
+      await ref
+          .read(historyControllerProvider.notifier)
+          .deleteConversation(conversation.id);
     }
   }
 
   static String _formatTimestamp(DateTime utc) {
     const months = [
-      'jan', 'feb', 'mar', 'apr', 'may', 'jun',
-      'jul', 'aug', 'sep', 'oct', 'nov', 'dec',
+      'jan',
+      'feb',
+      'mar',
+      'apr',
+      'may',
+      'jun',
+      'jul',
+      'aug',
+      'sep',
+      'oct',
+      'nov',
+      'dec',
     ];
     final local = utc.toLocal();
     final hh = local.hour.toString().padLeft(2, '0');

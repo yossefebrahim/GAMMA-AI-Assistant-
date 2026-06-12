@@ -24,118 +24,138 @@ void main() {
 
   tearDown(() => container.dispose());
 
-  ChatController controller() => container.read(chatControllerProvider.notifier);
+  ChatController controller() =>
+      container.read(chatControllerProvider.notifier);
   ChatState read() => container.read(chatControllerProvider);
-  ConversationRepository repo() => container.read(conversationRepositoryProvider);
+  ConversationRepository repo() =>
+      container.read(conversationRepositoryProvider);
 
-  test('send persists the user turn and streams a complete assistant reply (FR-013)', () async {
-    gemma.scriptedDeltas = ['Hello', ', ', 'world'];
+  test(
+    'send persists the user turn and streams a complete assistant reply (FR-013)',
+    () async {
+      gemma.scriptedDeltas = ['Hello', ', ', 'world'];
 
-    await controller().send('hi there');
+      await controller().send('hi there');
 
-    final conversationId = read().conversationId!;
-    final turns = await repo().loadTurns(conversationId);
-    expect(turns, hasLength(2));
-    expect(turns[0].role, MessageRole.user);
-    expect(turns[0].content, 'hi there');
-    expect(turns[1].role, MessageRole.assistant);
-    expect(turns[1].content, 'Hello, world');
-    expect(turns[1].status, MessageStatus.complete);
-    expect(read().isGenerating, isFalse);
-    // The prompt is passed separately; history excludes it (first turn → empty history).
-    expect(gemma.lastPrompt, 'hi there');
-    expect(gemma.lastHistory, isEmpty);
-  });
+      final conversationId = read().conversationId!;
+      final turns = await repo().loadTurns(conversationId);
+      expect(turns, hasLength(2));
+      expect(turns[0].role, MessageRole.user);
+      expect(turns[0].content, 'hi there');
+      expect(turns[1].role, MessageRole.assistant);
+      expect(turns[1].content, 'Hello, world');
+      expect(turns[1].status, MessageStatus.complete);
+      expect(read().isGenerating, isFalse);
+      // The prompt is passed separately; history excludes it (first turn → empty history).
+      expect(gemma.lastPrompt, 'hi there');
+      expect(gemma.lastHistory, isEmpty);
+    },
+  );
 
-  test('stop retains the partial reply as stoppedPartial (FR-014/SC-005)', () async {
-    gemma.scriptedDeltas = ['aa', 'bb', 'cc', 'dd', 'ee'];
-    gemma.deltaInterval = const Duration(milliseconds: 25);
+  test(
+    'stop retains the partial reply as stoppedPartial (FR-014/SC-005)',
+    () async {
+      gemma.scriptedDeltas = ['aa', 'bb', 'cc', 'dd', 'ee'];
+      gemma.deltaInterval = const Duration(milliseconds: 25);
 
-    final sending = controller().send('hi'); // not awaited — stop mid-stream
-    
-    // Wait until generation starts and the first delta is flushed to the database
-    int? conversationId;
-    while (true) {
-      await Future<void>.delayed(const Duration(milliseconds: 5));
-      conversationId = read().conversationId;
-      if (conversationId != null) {
-        final turns = await repo().loadTurns(conversationId);
-        final assistant = turns.cast<Message?>().firstWhere(
-          (m) => m?.role == MessageRole.assistant,
-          orElse: () => null,
-        );
-        if (assistant != null && assistant.content.isNotEmpty) {
-          break;
+      final sending = controller().send('hi'); // not awaited — stop mid-stream
+
+      // Wait until generation starts and the first delta is flushed to the database
+      int? conversationId;
+      while (true) {
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+        conversationId = read().conversationId;
+        if (conversationId != null) {
+          final turns = await repo().loadTurns(conversationId);
+          final assistant = turns.cast<Message?>().firstWhere(
+            (m) => m?.role == MessageRole.assistant,
+            orElse: () => null,
+          );
+          if (assistant != null && assistant.content.isNotEmpty) {
+            break;
+          }
         }
       }
-    }
 
-    await controller().stop();
-    await sending;
+      await controller().stop();
+      await sending;
 
-    final assistant =
-        (await repo().loadTurns(conversationId)).firstWhere((m) => m.role == MessageRole.assistant);
-    expect(assistant.status, MessageStatus.stoppedPartial);
-    expect(assistant.content, isNotEmpty);
-    expect(assistant.content.length, lessThan('aabbccddee'.length));
-    expect(read().isGenerating, isFalse);
-    expect(gemma.stopCount, 1);
-  });
+      final assistant = (await repo().loadTurns(
+        conversationId,
+      )).firstWhere((m) => m.role == MessageRole.assistant);
+      expect(assistant.status, MessageStatus.stoppedPartial);
+      expect(assistant.content, isNotEmpty);
+      expect(assistant.content.length, lessThan('aabbccddee'.length));
+      expect(read().isGenerating, isFalse);
+      expect(gemma.stopCount, 1);
+    },
+  );
 
-  test('a delta produced concurrently with stop is retained, not dropped (FR-014)', () async {
-    // 'LAST' is delivered by the fake at the moment stop() runs — i.e. after _stopRequested is set.
-    // With a break-before-write loop it would be discarded; the controller must keep it.
-    gemma
-      ..scriptedDeltas = ['aa', 'bb', 'cc', 'dd']
-      ..deltaInterval = const Duration(milliseconds: 25)
-      ..trailingDeltaAfterStop = 'LAST';
+  test(
+    'a delta produced concurrently with stop is retained, not dropped (FR-014)',
+    () async {
+      // 'LAST' is delivered by the fake at the moment stop() runs — i.e. after _stopRequested is set.
+      // With a break-before-write loop it would be discarded; the controller must keep it.
+      gemma
+        ..scriptedDeltas = ['aa', 'bb', 'cc', 'dd']
+        ..deltaInterval = const Duration(milliseconds: 25)
+        ..trailingDeltaAfterStop = 'LAST';
 
-    final sending = controller().send('hi');
-    
-    // Wait until generation starts and the first delta is flushed to the database
-    int? conversationId;
-    while (true) {
-      await Future<void>.delayed(const Duration(milliseconds: 5));
-      conversationId = read().conversationId;
-      if (conversationId != null) {
-        final turns = await repo().loadTurns(conversationId);
-        final assistant = turns.cast<Message?>().firstWhere(
-          (m) => m?.role == MessageRole.assistant,
-          orElse: () => null,
-        );
-        if (assistant != null && assistant.content.isNotEmpty) {
-          break;
+      final sending = controller().send('hi');
+
+      // Wait until generation starts and the first delta is flushed to the database
+      int? conversationId;
+      while (true) {
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+        conversationId = read().conversationId;
+        if (conversationId != null) {
+          final turns = await repo().loadTurns(conversationId);
+          final assistant = turns.cast<Message?>().firstWhere(
+            (m) => m?.role == MessageRole.assistant,
+            orElse: () => null,
+          );
+          if (assistant != null && assistant.content.isNotEmpty) {
+            break;
+          }
         }
       }
-    }
 
-    await controller().stop();
-    await sending;
+      await controller().stop();
+      await sending;
 
-    final assistant = (await repo().loadTurns(read().conversationId!))
-        .firstWhere((m) => m.role == MessageRole.assistant);
-    expect(assistant.status, MessageStatus.stoppedPartial);
-    expect(assistant.content, endsWith('LAST'),
-        reason: 'the token delivered at stop is retained (FR-014)');
-  });
+      final assistant = (await repo().loadTurns(
+        read().conversationId!,
+      )).firstWhere((m) => m.role == MessageRole.assistant);
+      expect(assistant.status, MessageStatus.stoppedPartial);
+      expect(
+        assistant.content,
+        endsWith('LAST'),
+        reason: 'the token delivered at stop is retained (FR-014)',
+      );
+    },
+  );
 
-  test('send is ignored while already generating (Q4 single in-flight)', () async {
-    gemma.scriptedDeltas = ['x', 'y', 'z', 'w'];
-    gemma.deltaInterval = const Duration(milliseconds: 25);
+  test(
+    'send is ignored while already generating (Q4 single in-flight)',
+    () async {
+      gemma.scriptedDeltas = ['x', 'y', 'z', 'w'];
+      gemma.deltaInterval = const Duration(milliseconds: 25);
 
-    final first = controller().send('first');
-    await Future<void>.delayed(const Duration(milliseconds: 10));
-    expect(read().isGenerating, isTrue);
+      final first = controller().send('first');
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(read().isGenerating, isTrue);
 
-    await controller().send('second'); // no-op while generating
+      await controller().send('second'); // no-op while generating
 
-    final conversationId = read().conversationId!;
-    final userTurns =
-        (await repo().loadTurns(conversationId)).where((m) => m.role == MessageRole.user).toList();
-    expect(userTurns, hasLength(1));
-    expect(userTurns.single.content, 'first');
+      final conversationId = read().conversationId!;
+      final userTurns = (await repo().loadTurns(
+        conversationId,
+      )).where((m) => m.role == MessageRole.user).toList();
+      expect(userTurns, hasLength(1));
+      expect(userTurns.single.content, 'first');
 
-    await controller().stop();
-    await first;
-  });
+      await controller().stop();
+      await first;
+    },
+  );
 }

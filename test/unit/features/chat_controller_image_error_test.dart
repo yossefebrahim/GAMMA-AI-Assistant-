@@ -31,7 +31,9 @@ void main() {
         imageFileStoreProvider.overrideWithValue(
           ImageFileStore(documentsDirectory: () async => tempDir),
         ),
-        modelCapabilitiesProvider.overrideWith((ref) => const ModelCapabilities(image: true)),
+        modelCapabilitiesProvider.overrideWith(
+          (ref) => const ModelCapabilities(image: true),
+        ),
       ],
     );
   });
@@ -41,81 +43,116 @@ void main() {
     if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
   });
 
-  ChatController controller() => container.read(chatControllerProvider.notifier);
+  ChatController controller() =>
+      container.read(chatControllerProvider.notifier);
   ChatState read() => container.read(chatControllerProvider);
-  ConversationRepository repo() => container.read(conversationRepositoryProvider);
+  ConversationRepository repo() =>
+      container.read(conversationRepositoryProvider);
 
   PendingAttachment tempImage(String name, List<int> bytes) {
     final file = File('${tempDir.path}/$name')..writeAsBytesSync(bytes);
     return PendingAttachment(path: file.path, mimeType: 'image/jpeg');
   }
 
-  test('ImageProcessingException finalizes the turn cleanly, resets isGenerating, and surfaces a '
-      'clear message — no hang (FR-020, SC-008)', () async {
-    gemma.throwImageProcessing = true;
+  test(
+    'ImageProcessingException finalizes the turn cleanly, resets isGenerating, and surfaces a '
+    'clear message — no hang (FR-020, SC-008)',
+    () async {
+      gemma.throwImageProcessing = true;
 
-    await controller().send('what is this', image: tempImage('bad.jpg', [1, 2, 3, 4]));
+      await controller().send(
+        'what is this',
+        image: tempImage('bad.jpg', [1, 2, 3, 4]),
+      );
 
-    expect(read().isGenerating, isFalse, reason: 'no hang — generation flag reset');
-    expect(read().errorMessage, ChatController.imageErrorMessage);
+      expect(
+        read().isGenerating,
+        isFalse,
+        reason: 'no hang — generation flag reset',
+      );
+      expect(read().errorMessage, ChatController.imageErrorMessage);
 
-    final turns = await repo().loadTurns(read().conversationId!);
-    final assistant = turns.firstWhere((m) => m.role == MessageRole.assistant);
-    expect(assistant.status, MessageStatus.stoppedPartial, reason: 'turn finalized cleanly');
-  });
+      final turns = await repo().loadTurns(read().conversationId!);
+      final assistant = turns.firstWhere(
+        (m) => m.role == MessageRole.assistant,
+      );
+      expect(
+        assistant.status,
+        MessageStatus.stoppedPartial,
+        reason: 'turn finalized cleanly',
+      );
+    },
+  );
 
-  test('dismissError clears the message and the conversation stays usable (FR-020)', () async {
-    gemma.throwImageProcessing = true;
-    await controller().send('bad', image: tempImage('b.jpg', [9, 9, 9]));
-    expect(read().errorMessage, isNotNull);
+  test(
+    'dismissError clears the message and the conversation stays usable (FR-020)',
+    () async {
+      gemma.throwImageProcessing = true;
+      await controller().send('bad', image: tempImage('b.jpg', [9, 9, 9]));
+      expect(read().errorMessage, isNotNull);
 
-    controller().dismissError();
-    expect(read().errorMessage, isNull);
+      controller().dismissError();
+      expect(read().errorMessage, isNull);
 
-    // A subsequent text send works and the error stays cleared.
-    gemma.throwImageProcessing = false;
-    gemma.scriptedDeltas = ['hi again'];
-    await controller().send('hello again');
-    expect(read().errorMessage, isNull);
-    final assistant = (await repo().loadTurns(read().conversationId!))
-        .lastWhere((m) => m.role == MessageRole.assistant);
-    expect(assistant.content, 'hi again');
-  });
+      // A subsequent text send works and the error stays cleared.
+      gemma.throwImageProcessing = false;
+      gemma.scriptedDeltas = ['hi again'];
+      await controller().send('hello again');
+      expect(read().errorMessage, isNull);
+      final assistant = (await repo().loadTurns(
+        read().conversationId!,
+      )).lastWhere((m) => m.role == MessageRole.assistant);
+      expect(assistant.content, 'hi again');
+    },
+  );
 
-  test('an empty/unreadable image is rejected with "pick another"; nothing is sent (FR-021)',
-      () async {
-    gemma.scriptedDeltas = ['should not run'];
-    final empty = File('${tempDir.path}/empty.jpg')..writeAsBytesSync(<int>[]);
+  test(
+    'an empty/unreadable image is rejected with "pick another"; nothing is sent (FR-021)',
+    () async {
+      gemma.scriptedDeltas = ['should not run'];
+      final empty = File('${tempDir.path}/empty.jpg')
+        ..writeAsBytesSync(<int>[]);
 
-    await controller().send('what is this', image: PendingAttachment(path: empty.path));
+      await controller().send(
+        'what is this',
+        image: PendingAttachment(path: empty.path),
+      );
 
-    // The send aborts before creating a conversation or calling generate…
-    expect(read().conversationId, isNull);
-    expect(read().isGenerating, isFalse);
-    expect(gemma.lastPrompt, isNull);
-    // …and the composer surfaces "pick another".
-    expect(
-      container.read(attachmentControllerProvider).error,
-      AttachmentController.pickAnotherError,
-    );
-  });
+      // The send aborts before creating a conversation or calling generate…
+      expect(read().conversationId, isNull);
+      expect(read().isGenerating, isFalse);
+      expect(gemma.lastPrompt, isNull);
+      // …and the composer surfaces "pick another".
+      expect(
+        container.read(attachmentControllerProvider).error,
+        AttachmentController.pickAnotherError,
+      );
+    },
+  );
 
-  test('stop during an image-grounded reply retains the partial text (FR-014)', () async {
-    gemma
-      ..scriptedDeltas = ['aa', 'bb', 'cc', 'dd', 'ee']
-      ..deltaInterval = const Duration(milliseconds: 25);
+  test(
+    'stop during an image-grounded reply retains the partial text (FR-014)',
+    () async {
+      gemma
+        ..scriptedDeltas = ['aa', 'bb', 'cc', 'dd', 'ee']
+        ..deltaInterval = const Duration(milliseconds: 25);
 
-    final sending = controller().send('describe', image: tempImage('img.jpg', [1, 2]));
-    await Future<void>.delayed(const Duration(milliseconds: 40));
-    await controller().stop();
-    await sending;
+      final sending = controller().send(
+        'describe',
+        image: tempImage('img.jpg', [1, 2]),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+      await controller().stop();
+      await sending;
 
-    final assistant = (await repo().loadTurns(read().conversationId!))
-        .firstWhere((m) => m.role == MessageRole.assistant);
-    expect(assistant.status, MessageStatus.stoppedPartial);
-    expect(assistant.content, isNotEmpty);
-    expect(assistant.content.length, lessThan('aabbccddee'.length));
-    expect(read().isGenerating, isFalse);
-    expect(gemma.stopCount, 1);
-  });
+      final assistant = (await repo().loadTurns(
+        read().conversationId!,
+      )).firstWhere((m) => m.role == MessageRole.assistant);
+      expect(assistant.status, MessageStatus.stoppedPartial);
+      expect(assistant.content, isNotEmpty);
+      expect(assistant.content.length, lessThan('aabbccddee'.length));
+      expect(read().isGenerating, isFalse);
+      expect(gemma.stopCount, 1);
+    },
+  );
 }
