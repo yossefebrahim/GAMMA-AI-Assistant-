@@ -5,16 +5,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Result of acknowledging the license and preflighting the device (FR-003/FR-005).
 class PreflightOutcome {
-  const PreflightOutcome._({required this.eligible, this.softWarn = false, this.reason});
+  const PreflightOutcome._({
+    required this.eligible,
+    this.softWarn = false,
+    this.reason,
+  });
 
   /// Device passed preflight; proceed to download. [softWarn] flags an eligible-but-low-headroom
   /// device ("below recommended 8 GB").
   const PreflightOutcome.eligible({bool softWarn = false})
-      : this._(eligible: true, softWarn: softWarn);
+    : this._(eligible: true, softWarn: softWarn);
 
   /// Device failed preflight; route to the blocked screen with [reason].
   const PreflightOutcome.blocked(IneligibleReason reason)
-      : this._(eligible: false, reason: reason);
+    : this._(eligible: false, reason: reason);
 
   final bool eligible;
   final bool softWarn;
@@ -33,7 +37,9 @@ class OnboardingController extends Notifier<bool> {
   Future<PreflightOutcome> acknowledgeAndPreflight() async {
     state = true;
     try {
-      await ref.read(settingsRepositoryProvider).acknowledgeLicense(DateTime.now().toUtc());
+      await ref
+          .read(settingsRepositoryProvider)
+          .acknowledgeLicense(DateTime.now().toUtc());
       final capability = await ref.read(devicePreflightServiceProvider).check();
       if (capability.isEligible) {
         return PreflightOutcome.eligible(softWarn: capability.isSoftWarn);

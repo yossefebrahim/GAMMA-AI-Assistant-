@@ -49,6 +49,11 @@ void main() {
         audio_mime_type TEXT NULL
       );
       CREATE INDEX idx_messages_conversation ON messages (conversation_id, sequence);
+      CREATE TABLE app_settings_table (
+        id INTEGER NOT NULL PRIMARY KEY,
+        theme_mode TEXT NOT NULL,
+        license_acknowledged_at TEXT NULL
+      );
     ''');
     raw.execute('''
       INSERT INTO conversations (id, title, created_at, updated_at)
@@ -72,32 +77,48 @@ void main() {
     raw.close();
   }
 
-  test('v3 → v4 adds nullable tool columns; v3 rows survive unchanged with NULL tool fields '
-      '(R7, FR-019)', () async {
-    seedV3();
+  test(
+    'v3 → v4 adds nullable tool columns; v3 rows survive unchanged with NULL tool fields '
+    '(R7, FR-019)',
+    () async {
+      seedV3();
 
-    // Open at v4 → drift runs onUpgrade(3, 4): only the tool block fires.
-    final db = AppDatabase(NativeDatabase(dbFile));
-    addTearDown(db.close);
+      // Open at the current schema → drift runs onUpgrade(3, 5): the tool (v4) and memory (v5)
+      // blocks fire.
+      final db = AppDatabase(NativeDatabase(dbFile));
+      addTearDown(db.close);
 
-    final messages = await db.select(db.messages).get();
-    expect(messages, hasLength(4));
+      final messages = await db.select(db.messages).get();
+      expect(messages, hasLength(4));
 
-    final text = messages.firstWhere((m) => m.id == 1);
-    expect(text.content, 'hello from v3');
-    expect(text.toolName, isNull, reason: 'new tool columns default to NULL for v3 rows');
-    expect(text.toolArgs, isNull);
-    expect(text.toolStatus, isNull);
-    expect(text.toolResult, isNull);
+      final text = messages.firstWhere((m) => m.id == 1);
+      expect(text.content, 'hello from v3');
+      expect(
+        text.toolName,
+        isNull,
+        reason: 'new tool columns default to NULL for v3 rows',
+      );
+      expect(text.toolArgs, isNull);
+      expect(text.toolStatus, isNull);
+      expect(text.toolResult, isNull);
 
-    final image = messages.firstWhere((m) => m.id == 2);
-    expect(image.imagePath, '/images/pic.jpg', reason: 'v3 image data survives untouched');
-    final audio = messages.firstWhere((m) => m.id == 3);
-    expect(audio.audioPath, '/audio/clip.wav', reason: 'v3 audio data survives untouched');
+      final image = messages.firstWhere((m) => m.id == 2);
+      expect(
+        image.imagePath,
+        '/images/pic.jpg',
+        reason: 'v3 image data survives untouched',
+      );
+      final audio = messages.firstWhere((m) => m.id == 3);
+      expect(
+        audio.audioPath,
+        '/audio/clip.wav',
+        reason: 'v3 audio data survives untouched',
+      );
 
-    expect((await db.select(db.conversations).get()).single.title, 'v3 chat');
-    expect(db.schemaVersion, 4);
-  });
+      expect((await db.select(db.conversations).get()).single.title, 'v3 chat');
+      expect(db.schemaVersion, 5);
+    },
+  );
 
   test('the conversation/sequence index survives the upgrade', () async {
     seedV3();
@@ -112,20 +133,25 @@ void main() {
     expect(names, contains('idx_messages_conversation'));
   });
 
-  test('foreign keys stay enforced after the upgrade (cascade intact)', () async {
-    seedV3();
-    final db = AppDatabase(NativeDatabase(dbFile));
-    addTearDown(db.close);
-    await (db.delete(db.conversations)..where((c) => c.id.equals(1))).go();
-    expect(await db.select(db.messages).get(), isEmpty);
-  });
+  test(
+    'foreign keys stay enforced after the upgrade (cascade intact)',
+    () async {
+      seedV3();
+      final db = AppDatabase(NativeDatabase(dbFile));
+      addTearDown(db.close);
+      await (db.delete(db.conversations)..where((c) => c.id.equals(1))).go();
+      expect(await db.select(db.messages).get(), isEmpty);
+    },
+  );
 
   test('a new tool row round-trips through the upgraded schema', () async {
     seedV3();
     final db = AppDatabase(NativeDatabase(dbFile));
     addTearDown(db.close);
 
-    await db.into(db.messages).insert(
+    await db
+        .into(db.messages)
+        .insert(
           MessagesCompanion.insert(
             conversationId: 1,
             role: 'tool',
@@ -140,7 +166,9 @@ void main() {
           ),
         );
 
-    final row = (await db.select(db.messages).get()).firstWhere((m) => m.sequence == 4);
+    final row = (await db.select(db.messages).get()).firstWhere(
+      (m) => m.sequence == 4,
+    );
     expect(row.role, 'tool');
     expect(row.toolName, 'get_device_info');
     expect(row.toolArgs, '{"section":"battery"}');
@@ -148,34 +176,42 @@ void main() {
     expect(row.toolResult, '{"battery":83}');
   });
 
-  test('fresh installs land on v4 directly with the tool columns (onCreate round-trip)',
-      () async {
-    final db = AppDatabase(NativeDatabase.memory());
-    addTearDown(db.close);
+  test(
+    'fresh installs land on v4 directly with the tool columns (onCreate round-trip)',
+    () async {
+      final db = AppDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
 
-    final convId = await db.into(db.conversations).insert(
-          ConversationsCompanion.insert(
-            createdAt: DateTime.utc(2026, 6, 10),
-            updatedAt: DateTime.utc(2026, 6, 10),
-          ),
-        );
-    await db.into(db.messages).insert(
-          MessagesCompanion.insert(
-            conversationId: convId,
-            role: 'tool',
-            content: 'light theme on',
-            sequence: 0,
-            createdAt: DateTime.utc(2026, 6, 10),
-            status: 'complete',
-            toolName: const Value('set_theme'),
-            toolArgs: const Value('{"theme":"light"}'),
-            toolStatus: const Value('success'),
-            toolResult: const Value('{"theme":"light","alreadyActive":false}'),
-          ),
-        );
+      final convId = await db
+          .into(db.conversations)
+          .insert(
+            ConversationsCompanion.insert(
+              createdAt: DateTime.utc(2026, 6, 10),
+              updatedAt: DateTime.utc(2026, 6, 10),
+            ),
+          );
+      await db
+          .into(db.messages)
+          .insert(
+            MessagesCompanion.insert(
+              conversationId: convId,
+              role: 'tool',
+              content: 'light theme on',
+              sequence: 0,
+              createdAt: DateTime.utc(2026, 6, 10),
+              status: 'complete',
+              toolName: const Value('set_theme'),
+              toolArgs: const Value('{"theme":"light"}'),
+              toolStatus: const Value('success'),
+              toolResult: const Value(
+                '{"theme":"light","alreadyActive":false}',
+              ),
+            ),
+          );
 
-    final row = (await db.select(db.messages).get()).single;
-    expect(row.toolName, 'set_theme');
-    expect(row.toolStatus, 'success');
-  });
+      final row = (await db.select(db.messages).get()).single;
+      expect(row.toolName, 'set_theme');
+      expect(row.toolStatus, 'success');
+    },
+  );
 }

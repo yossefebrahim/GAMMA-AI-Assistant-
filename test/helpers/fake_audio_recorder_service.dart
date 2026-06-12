@@ -18,7 +18,8 @@ class FakeAudioRecorderService implements AudioRecorderService {
   /// Call order recorder: 'start' | 'stop' | 'cancel'.
   final List<String> calls = <String>[];
 
-  final StreamController<double> _amplitude = StreamController<double>.broadcast();
+  final StreamController<double> _amplitude =
+      StreamController<double>.broadcast();
   bool _recording = false;
 
   /// Drive the amplitude stream from the test (the pulsing-indicator input).

@@ -29,5 +29,6 @@ class SettingsController extends Notifier<void> {
   }
 }
 
-final settingsControllerProvider =
-    NotifierProvider<SettingsController, void>(SettingsController.new);
+final settingsControllerProvider = NotifierProvider<SettingsController, void>(
+  SettingsController.new,
+);

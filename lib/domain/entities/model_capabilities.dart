@@ -35,5 +35,6 @@ class ModelCapabilities {
       other.thinking == thinking;
 
   @override
-  int get hashCode => Object.hash(text, image, audio, functionCalling, thinking);
+  int get hashCode =>
+      Object.hash(text, image, audio, functionCalling, thinking);
 }

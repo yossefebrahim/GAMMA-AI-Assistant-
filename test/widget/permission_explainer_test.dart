@@ -32,7 +32,9 @@ void main() {
       overrides: [
         mediaPickerServiceProvider.overrideWithValue(picker),
         mediaPermissionServiceProvider.overrideWithValue(permission),
-        modelCapabilitiesProvider.overrideWith((ref) => const ModelCapabilities(image: true)),
+        modelCapabilitiesProvider.overrideWith(
+          (ref) => const ModelCapabilities(image: true),
+        ),
       ],
     );
   });
@@ -40,42 +42,50 @@ void main() {
   tearDown(() => container.dispose());
 
   Widget app() => UncontrolledProviderScope(
-        container: container,
-        child: MaterialApp(
-          theme: AppTheme.light,
-          darkTheme: AppTheme.dark,
-          themeMode: ThemeMode.dark,
-          home: const Scaffold(body: Composer()),
-        ),
+    container: container,
+    child: MaterialApp(
+      theme: AppTheme.light,
+      darkTheme: AppTheme.dark,
+      themeMode: ThemeMode.dark,
+      home: const Scaffold(body: Composer()),
+    ),
+  );
+
+  testWidgets(
+    'camera with no grant shows an explainer with grant + open settings + dismiss; '
+    'dismiss returns to a working composer (FR-009/FR-010/FR-011)',
+    (tester) async {
+      await tester.pumpWidget(app());
+      await tester.pump();
+
+      await tester.tap(find.byKey(Composer.attachKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(Composer.cameraOptionKey));
+      await tester.pumpAndSettle();
+
+      // The explainer is shown with all three actions.
+      expect(find.byKey(Composer.permissionExplainerKey), findsOneWidget);
+      expect(find.byKey(Composer.permissionGrantKey), findsOneWidget);
+      expect(find.byKey(Composer.permissionSettingsKey), findsOneWidget);
+      expect(find.byKey(Composer.permissionDismissKey), findsOneWidget);
+
+      // Dismiss → the explainer closes and text chat still works.
+      await tester.tap(find.byKey(Composer.permissionDismissKey));
+      await tester.pumpAndSettle();
+      expect(find.byKey(Composer.permissionExplainerKey), findsNothing);
+
+      await tester.enterText(find.byKey(Composer.fieldKey), 'still works');
+      await tester.pump();
+      expect(
+        tester.widget<IconButton>(find.byKey(Composer.sendKey)).onPressed,
+        isNotNull,
       );
+    },
+  );
 
-  testWidgets('camera with no grant shows an explainer with grant + open settings + dismiss; '
-      'dismiss returns to a working composer (FR-009/FR-010/FR-011)', (tester) async {
-    await tester.pumpWidget(app());
-    await tester.pump();
-
-    await tester.tap(find.byKey(Composer.attachKey));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(Composer.cameraOptionKey));
-    await tester.pumpAndSettle();
-
-    // The explainer is shown with all three actions.
-    expect(find.byKey(Composer.permissionExplainerKey), findsOneWidget);
-    expect(find.byKey(Composer.permissionGrantKey), findsOneWidget);
-    expect(find.byKey(Composer.permissionSettingsKey), findsOneWidget);
-    expect(find.byKey(Composer.permissionDismissKey), findsOneWidget);
-
-    // Dismiss → the explainer closes and text chat still works.
-    await tester.tap(find.byKey(Composer.permissionDismissKey));
-    await tester.pumpAndSettle();
-    expect(find.byKey(Composer.permissionExplainerKey), findsNothing);
-
-    await tester.enterText(find.byKey(Composer.fieldKey), 'still works');
-    await tester.pump();
-    expect(tester.widget<IconButton>(find.byKey(Composer.sendKey)).onPressed, isNotNull);
-  });
-
-  testWidgets('open settings invokes openAppSettings via the service (FR-010)', (tester) async {
+  testWidgets('open settings invokes openAppSettings via the service (FR-010)', (
+    tester,
+  ) async {
     permission.status = MediaPermissionStatus.permanentlyDenied;
     await tester.pumpWidget(app());
     await tester.pump();

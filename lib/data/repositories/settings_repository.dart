@@ -15,12 +15,15 @@ class SettingsRepository {
   static const int _rowId = 1;
 
   AppSettings _toSettings(AppSettingsRow row) => AppSettings(
-        themeMode: AppThemeMode.values.byName(row.themeMode),
-        licenseAcknowledgedAt: row.licenseAcknowledgedAt,
-      );
+    themeMode: AppThemeMode.values.byName(row.themeMode),
+    licenseAcknowledgedAt: row.licenseAcknowledgedAt,
+    memoryEnabled: row.memoryEnabled,
+  );
 
   Future<void> _ensureRow() async {
-    await _db.into(_db.appSettingsTable).insert(
+    await _db
+        .into(_db.appSettingsTable)
+        .insert(
           AppSettingsTableCompanion.insert(
             id: const Value(_rowId),
             themeMode: AppThemeMode.dark.name,
@@ -31,9 +34,9 @@ class SettingsRepository {
 
   /// Read current settings, lazily creating the default row if absent.
   Future<AppSettings> read() async {
-    final row = await (_db.select(_db.appSettingsTable)
-          ..where((t) => t.id.equals(_rowId)))
-        .getSingleOrNull();
+    final row = await (_db.select(
+      _db.appSettingsTable,
+    )..where((t) => t.id.equals(_rowId))).getSingleOrNull();
     if (row == null) {
       await _ensureRow();
       return AppSettings.defaults;
@@ -55,6 +58,19 @@ class SettingsRepository {
         .write(AppSettingsTableCompanion(themeMode: Value(mode.name)));
   }
 
+  /// Read just the memory-enabled flag (005). Lazily creates the default row if absent.
+  Future<bool> readMemoryEnabled() async {
+    final settings = await read();
+    return settings.memoryEnabled;
+  }
+
+  /// Persist the memory-enabled preference (005, Clarifications Q3).
+  Future<void> setMemoryEnabled(bool enabled) async {
+    await _ensureRow();
+    await (_db.update(_db.appSettingsTable)..where((t) => t.id.equals(_rowId)))
+        .write(AppSettingsTableCompanion(memoryEnabled: Value(enabled)));
+  }
+
   /// Record the one-time model-license acknowledgment (clarification Q1).
   Future<void> acknowledgeLicense(DateTime at) async {
     await _ensureRow();
@@ -66,10 +82,10 @@ class SettingsRepository {
 /// Maps the domain theme mode to Material's [ThemeMode] for the app shell.
 extension AppThemeModeX on AppThemeMode {
   ThemeMode get material => switch (this) {
-        AppThemeMode.dark => ThemeMode.dark,
-        AppThemeMode.light => ThemeMode.light,
-        AppThemeMode.system => ThemeMode.system,
-      };
+    AppThemeMode.dark => ThemeMode.dark,
+    AppThemeMode.light => ThemeMode.light,
+    AppThemeMode.system => ThemeMode.system,
+  };
 }
 
 final settingsRepositoryProvider = Provider<SettingsRepository>((ref) {
@@ -99,5 +115,28 @@ class ThemeModeController extends Notifier<AppThemeMode> {
   }
 }
 
-final themeModeProvider =
-    NotifierProvider<ThemeModeController, AppThemeMode>(ThemeModeController.new);
+final themeModeProvider = NotifierProvider<ThemeModeController, AppThemeMode>(
+  ThemeModeController.new,
+);
+
+/// Whether durable memory is enabled (005, Clarifications Q3 — default **true**). Reflects the
+/// persisted value reactively and exposes [MemoryEnabledController.set] to change + persist it.
+class MemoryEnabledController extends Notifier<bool> {
+  @override
+  bool build() {
+    final settings = ref.watch(settingsStreamProvider);
+    return settings.maybeWhen(
+      data: (value) => value.memoryEnabled,
+      orElse: () => true,
+    );
+  }
+
+  Future<void> set(bool enabled) async {
+    state = enabled; // optimistic; the persisted stream will re-confirm
+    await ref.read(settingsRepositoryProvider).setMemoryEnabled(enabled);
+  }
+}
+
+final memoryEnabledProvider = NotifierProvider<MemoryEnabledController, bool>(
+  MemoryEnabledController.new,
+);

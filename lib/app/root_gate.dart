@@ -22,7 +22,8 @@ class RootGate extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final installed = ref.watch(appStartProvider);
     return installed.when(
-      data: (isInstalled) => isInstalled ? const ChatScreen() : const WelcomeScreen(),
+      data: (isInstalled) =>
+          isInstalled ? const ChatScreen() : const WelcomeScreen(),
       loading: () => const _Splash(),
       // Fail safe to onboarding if the check errors (e.g. storage unreadable).
       error: (_, _) => const WelcomeScreen(),
@@ -42,7 +43,10 @@ class _Splash extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('gemma', style: AppText.dotMatrix(fontSize: 48, color: colors.textPrimary)),
+            Text(
+              'gemma',
+              style: AppText.dotMatrix(fontSize: 48, color: colors.textPrimary),
+            ),
             const SizedBox(height: AppSpacing.s24),
             const DotPulse(),
           ],

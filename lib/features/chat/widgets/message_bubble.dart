@@ -29,7 +29,9 @@ class MessageBubble extends StatelessWidget {
     final bubble = Container(
       // sizeOf (NOT MediaQuery.of): subscribing to all MediaQuery aspects rebuilt every visible
       // bubble on every frame of the keyboard inset animation. Size doesn't change with insets.
-      constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.82),
+      constraints: BoxConstraints(
+        maxWidth: MediaQuery.sizeOf(context).width * 0.82,
+      ),
       padding: const EdgeInsets.symmetric(
         horizontal: AppSpacing.s16,
         vertical: AppSpacing.s12,
@@ -53,13 +55,15 @@ class MessageBubble extends StatelessWidget {
           // the stored file, not from `capabilities`.
           if (message.image != null) ...[
             _BubbleImage(path: message.image!.path),
-            if (message.content.isNotEmpty) const SizedBox(height: AppSpacing.s8),
+            if (message.content.isNotEmpty)
+              const SizedBox(height: AppSpacing.s8),
           ],
           // The attached voice clip renders as a static chip — duration label, no playback this
           // slice (003 spec Q2/FR-018) — again independent of current capabilities.
           if (message.audio != null) ...[
             AudioChip.history(path: message.audio!.path),
-            if (message.content.isNotEmpty) const SizedBox(height: AppSpacing.s8),
+            if (message.content.isNotEmpty)
+              const SizedBox(height: AppSpacing.s8),
           ],
           if (isStreaming && message.content.isEmpty)
             Padding(
@@ -73,12 +77,16 @@ class MessageBubble extends StatelessWidget {
             if (isUser)
               Text(
                 message.content,
-                style: theme.textTheme.bodyLarge?.copyWith(color: colors.textPrimary),
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: colors.textPrimary,
+                ),
               )
             else
               GptMarkdown(
                 message.content,
-                style: theme.textTheme.bodyLarge?.copyWith(color: colors.textPrimary),
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: colors.textPrimary,
+                ),
               ),
           if (isStoppedPartial) ...[
             const SizedBox(height: AppSpacing.s8),
@@ -119,7 +127,10 @@ class _BubbleImage extends StatelessWidget {
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(AppSpacing.radiusControl),
-            border: Border.all(color: colors.outline, width: AppSpacing.hairline),
+            border: Border.all(
+              color: colors.outline,
+              width: AppSpacing.hairline,
+            ),
           ),
           constraints: const BoxConstraints(maxHeight: _maxHeight),
           child: Image.file(
@@ -127,10 +138,14 @@ class _BubbleImage extends StatelessWidget {
             fit: BoxFit.contain,
             // Decode at the displayed height, not the stored resolution: a full 1536px decode is
             // a ~12 MB texture for a ≤240dp slot, felt as jank on every list/keyboard relayout.
-            cacheHeight: (_maxHeight * MediaQuery.devicePixelRatioOf(context)).round(),
+            cacheHeight: (_maxHeight * MediaQuery.devicePixelRatioOf(context))
+                .round(),
             errorBuilder: (context, error, stack) => Padding(
               padding: const EdgeInsets.all(AppSpacing.s24),
-              child: Icon(Icons.broken_image_outlined, color: colors.textSecondary),
+              child: Icon(
+                Icons.broken_image_outlined,
+                color: colors.textSecondary,
+              ),
             ),
           ),
         ),

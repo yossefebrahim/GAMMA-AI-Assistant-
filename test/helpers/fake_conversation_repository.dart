@@ -36,18 +36,22 @@ class FakeConversationRepository implements ConversationRepository {
   DateTime _now() => DateTime.now().toUtc();
 
   List<Conversation> _sortedConversations() {
-    return _conversations.values.toList()
-      ..sort((a, b) {
-        final byUpdated = b.updatedAt.compareTo(a.updatedAt);
-        return byUpdated != 0 ? byUpdated : b.id.compareTo(a.id);
-      });
+    return _conversations.values.toList()..sort((a, b) {
+      final byUpdated = b.updatedAt.compareTo(a.updatedAt);
+      return byUpdated != 0 ? byUpdated : b.id.compareTo(a.id);
+    });
   }
 
-  void _emitConversations() => _conversationsController.add(_sortedConversations());
+  void _emitConversations() =>
+      _conversationsController.add(_sortedConversations());
 
   void _emitMessages(int conversationId) {
     final controller = _messageControllers[conversationId];
-    controller?.add(List<Message>.unmodifiable(_messages[conversationId] ?? const <Message>[]));
+    controller?.add(
+      List<Message>.unmodifiable(
+        _messages[conversationId] ?? const <Message>[],
+      ),
+    );
   }
 
   String _deriveTitle(String firstMessage) {
@@ -78,7 +82,12 @@ class FakeConversationRepository implements ConversationRepository {
   Future<Conversation> createConversation() async {
     final now = _now();
     final id = ++_conversationSeq;
-    final conversation = Conversation(id: id, title: null, createdAt: now, updatedAt: now);
+    final conversation = Conversation(
+      id: id,
+      title: null,
+      createdAt: now,
+      updatedAt: now,
+    );
     _conversations[id] = conversation;
     _messages[id] = <Message>[];
     _emitConversations();
@@ -178,8 +187,14 @@ class FakeConversationRepository implements ConversationRepository {
   }
 
   @override
-  Future<void> finalizeAssistantMessage(int messageId, MessageStatus status) async {
-    final conversationId = _mutateMessage(messageId, (m) => m.copyWith(status: status));
+  Future<void> finalizeAssistantMessage(
+    int messageId,
+    MessageStatus status,
+  ) async {
+    final conversationId = _mutateMessage(
+      messageId,
+      (m) => m.copyWith(status: status),
+    );
     if (conversationId != null) {
       final conversation = _conversations[conversationId]!;
       _conversations[conversationId] = conversation.copyWith(updatedAt: _now());
@@ -202,7 +217,9 @@ class FakeConversationRepository implements ConversationRepository {
 
   @override
   Future<List<Message>> loadTurns(int conversationId) async {
-    return List<Message>.unmodifiable(_messages[conversationId] ?? const <Message>[]);
+    return List<Message>.unmodifiable(
+      _messages[conversationId] ?? const <Message>[],
+    );
   }
 
   @override
@@ -212,7 +229,11 @@ class FakeConversationRepository implements ConversationRepository {
     required Map<String, Object?> args,
   }) async {
     if (toolName.trim().isEmpty) {
-      throw ArgumentError.value(toolName, 'toolName', 'A tool row must carry a tool name');
+      throw ArgumentError.value(
+        toolName,
+        'toolName',
+        'A tool row must carry a tool name',
+      );
     }
     final now = _now();
     final list = _messages[conversationId] ??= <Message>[];
@@ -247,16 +268,24 @@ class FakeConversationRepository implements ConversationRepository {
   }) async {
     if (status == ToolCallStatus.running) {
       throw ArgumentError.value(
-          status, 'status', 'finalizeToolInvocation accepts terminal states only');
+        status,
+        'status',
+        'finalizeToolInvocation accepts terminal states only',
+      );
     }
     // Mirror the drift repo's ceiling check on the encoded length (contract guarantee 4).
     if (result != null &&
         result.toString().length > ToolSpec.clipboardResultCharBound * 2) {
-      throw ArgumentError.value(result, 'result', 'tool result exceeds the ceiling');
+      throw ArgumentError.value(
+        result,
+        'result',
+        'tool result exceeds the ceiling',
+      );
     }
     final conversationId = _mutateMessage(
       messageId,
-      (m) => m.copyWith(content: summary, toolStatus: status, toolResult: result),
+      (m) =>
+          m.copyWith(content: summary, toolStatus: status, toolResult: result),
     );
     if (conversationId != null) {
       final conversation = _conversations[conversationId]!;
@@ -271,7 +300,8 @@ class FakeConversationRepository implements ConversationRepository {
     for (final entry in _messages.entries) {
       for (var i = 0; i < entry.value.length; i++) {
         final m = entry.value[i];
-        if (m.role == MessageRole.tool && m.toolStatus == ToolCallStatus.running) {
+        if (m.role == MessageRole.tool &&
+            m.toolStatus == ToolCallStatus.running) {
           entry.value[i] = m.copyWith(
             content: 'interrupted',
             toolStatus: ToolCallStatus.error,

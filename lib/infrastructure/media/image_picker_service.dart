@@ -31,11 +31,14 @@ class ImagePickerService implements MediaPickerService {
       maxHeight: _maxDimension,
       imageQuality: _quality,
     );
-    if (file == null) return null; // user cancelled → not an error (contract #3)
+    if (file == null) {
+      return null; // user cancelled → not an error (contract #3)
+    }
     return PickedImage(path: file.path, mimeType: file.mimeType);
   }
 }
 
 /// App-wide [MediaPickerService]. Overridable in tests with `FakeMediaPickerService`.
-final mediaPickerServiceProvider =
-    Provider<MediaPickerService>((ref) => ImagePickerService());
+final mediaPickerServiceProvider = Provider<MediaPickerService>(
+  (ref) => ImagePickerService(),
+);

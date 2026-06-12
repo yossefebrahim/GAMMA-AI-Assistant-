@@ -18,8 +18,9 @@ import '../helpers/fake_media_picker_service.dart';
 /// US2 capability gating (FR-005/FR-006/FR-007, SC-002) — the attach control tracks
 /// `capabilities.image` as DATA and flips live on a model switch, with NO restart; text chat keeps
 /// working when images are unsupported.
-final _capProvider =
-    StateProvider<ModelCapabilities>((ref) => const ModelCapabilities(image: true));
+final _capProvider = StateProvider<ModelCapabilities>(
+  (ref) => const ModelCapabilities(image: true),
+);
 
 void main() {
   late ProviderContainer container;
@@ -28,7 +29,9 @@ void main() {
     container = makeContainer(
       overrides: [
         mediaPickerServiceProvider.overrideWithValue(FakeMediaPickerService()),
-        modelCapabilitiesProvider.overrideWith((ref) => ref.watch(_capProvider)),
+        modelCapabilitiesProvider.overrideWith(
+          (ref) => ref.watch(_capProvider),
+        ),
         imageFileStoreProvider.overrideWithValue(
           ImageFileStore(documentsDirectory: () async => Directory.systemTemp),
         ),
@@ -39,14 +42,14 @@ void main() {
   tearDown(() => container.dispose());
 
   Widget app() => UncontrolledProviderScope(
-        container: container,
-        child: MaterialApp(
-          theme: AppTheme.light,
-          darkTheme: AppTheme.dark,
-          themeMode: ThemeMode.dark,
-          home: const Scaffold(body: Composer()),
-        ),
-      );
+    container: container,
+    child: MaterialApp(
+      theme: AppTheme.light,
+      darkTheme: AppTheme.dark,
+      themeMode: ThemeMode.dark,
+      home: const Scaffold(body: Composer()),
+    ),
+  );
 
   testWidgets('attach control tracks capability data live — no restart '
       '(FR-005/FR-006/FR-007, SC-002)', (tester) async {
@@ -55,7 +58,9 @@ void main() {
     expect(find.byKey(Composer.attachKey), findsOneWidget);
 
     // Switch to a text-only model → the attach control disappears without a restart…
-    container.read(_capProvider.notifier).state = const ModelCapabilities(image: false);
+    container.read(_capProvider.notifier).state = const ModelCapabilities(
+      image: false,
+    );
     await tester.pump();
     expect(find.byKey(Composer.attachKey), findsNothing);
 
@@ -63,10 +68,15 @@ void main() {
     expect(find.byKey(Composer.fieldKey), findsOneWidget);
     await tester.enterText(find.byKey(Composer.fieldKey), 'hello');
     await tester.pump();
-    expect(tester.widget<IconButton>(find.byKey(Composer.sendKey)).onPressed, isNotNull);
+    expect(
+      tester.widget<IconButton>(find.byKey(Composer.sendKey)).onPressed,
+      isNotNull,
+    );
 
     // Switch back → the control reappears live.
-    container.read(_capProvider.notifier).state = const ModelCapabilities(image: true);
+    container.read(_capProvider.notifier).state = const ModelCapabilities(
+      image: true,
+    );
     await tester.pump();
     expect(find.byKey(Composer.attachKey), findsOneWidget);
   });

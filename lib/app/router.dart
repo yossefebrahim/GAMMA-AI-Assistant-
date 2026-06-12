@@ -6,6 +6,7 @@ import 'package:ai_assistant/features/download/download_screen.dart';
 import 'package:ai_assistant/features/history/history_screen.dart';
 import 'package:ai_assistant/features/onboarding/license_screen.dart';
 import 'package:ai_assistant/features/onboarding/preflight_blocked_screen.dart';
+import 'package:ai_assistant/features/settings/memory_screen.dart';
 import 'package:ai_assistant/features/settings/settings_screen.dart';
 import 'package:flutter/material.dart';
 
@@ -19,6 +20,7 @@ abstract final class AppRoutes {
   static const String chat = '/chat';
   static const String history = '/history';
   static const String settings = '/settings';
+  static const String memory = '/memory';
 }
 
 /// Route table. Onboarding/download/chat are real screens (US1/US2); history and settings remain
@@ -29,13 +31,15 @@ abstract final class AppRouter {
       AppRoutes.root => (_) => const RootGate(),
       AppRoutes.license => (_) => const LicenseScreen(),
       AppRoutes.preflightBlocked => (_) => PreflightBlockedScreen(
-            reason: (settings.arguments as IneligibleReason?) ??
-                IneligibleReason.insufficientMemory,
-          ),
+        reason:
+            (settings.arguments as IneligibleReason?) ??
+            IneligibleReason.insufficientMemory,
+      ),
       AppRoutes.download => (_) => const DownloadScreen(),
       AppRoutes.chat => (_) => const ChatScreen(),
       AppRoutes.history => (_) => const HistoryScreen(),
       AppRoutes.settings => (_) => const SettingsScreen(),
+      AppRoutes.memory => (_) => const MemoryScreen(),
       _ => (_) => const _RouteSkeleton(label: 'not found'),
     };
     return MaterialPageRoute<dynamic>(builder: builder, settings: settings);
@@ -52,9 +56,14 @@ class _RouteSkeleton extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: Text(AppText.spec(label), style: theme.textTheme.labelSmall)),
+      appBar: AppBar(
+        title: Text(AppText.spec(label), style: theme.textTheme.labelSmall),
+      ),
       body: Center(
-        child: Text(AppText.spec('$label · coming soon'), style: theme.textTheme.labelSmall),
+        child: Text(
+          AppText.spec('$label · coming soon'),
+          style: theme.textTheme.labelSmall,
+        ),
       ),
     );
   }

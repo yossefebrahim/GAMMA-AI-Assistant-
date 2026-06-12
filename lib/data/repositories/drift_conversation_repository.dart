@@ -41,32 +41,33 @@ class DriftConversationRepository implements ConversationRepository {
   static DateTime _now() => DateTime.now().toUtc();
 
   Conversation _toConversation(ConversationRow r) => Conversation(
-        id: r.id,
-        title: r.title,
-        createdAt: r.createdAt,
-        updatedAt: r.updatedAt,
-      );
+    id: r.id,
+    title: r.title,
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt,
+  );
 
   Message _toMessage(MessageRow r) => Message(
-        id: r.id,
-        conversationId: r.conversationId,
-        role: MessageRole.values.byName(r.role),
-        content: r.content,
-        sequence: r.sequence,
-        createdAt: r.createdAt,
-        status: MessageStatus.values.byName(r.status),
-        image: r.imagePath == null
-            ? null
-            : ImageAttachment(path: r.imagePath!, mimeType: r.imageMimeType),
-        audio: r.audioPath == null
-            ? null
-            : AudioAttachment(path: r.audioPath!, mimeType: r.audioMimeType),
-        toolName: r.toolName,
-        toolArgs: _decodeJson(r.toolArgs),
-        toolStatus:
-            r.toolStatus == null ? null : ToolCallStatus.values.byName(r.toolStatus!),
-        toolResult: _decodeJson(r.toolResult),
-      );
+    id: r.id,
+    conversationId: r.conversationId,
+    role: MessageRole.values.byName(r.role),
+    content: r.content,
+    sequence: r.sequence,
+    createdAt: r.createdAt,
+    status: MessageStatus.values.byName(r.status),
+    image: r.imagePath == null
+        ? null
+        : ImageAttachment(path: r.imagePath!, mimeType: r.imageMimeType),
+    audio: r.audioPath == null
+        ? null
+        : AudioAttachment(path: r.audioPath!, mimeType: r.audioMimeType),
+    toolName: r.toolName,
+    toolArgs: _decodeJson(r.toolArgs),
+    toolStatus: r.toolStatus == null
+        ? null
+        : ToolCallStatus.values.byName(r.toolStatus!),
+    toolResult: _decodeJson(r.toolResult),
+  );
 
   Map<String, Object?>? _decodeJson(String? raw) {
     if (raw == null) return null;
@@ -82,12 +83,14 @@ class DriftConversationRepository implements ConversationRepository {
   }
 
   @override
-  Stream<List<Conversation>> watchConversations() =>
-      _dao.watchConversations().map((rows) => rows.map(_toConversation).toList());
+  Stream<List<Conversation>> watchConversations() => _dao
+      .watchConversations()
+      .map((rows) => rows.map(_toConversation).toList());
 
   @override
-  Stream<List<Message>> watchMessages(int conversationId) =>
-      _dao.watchMessages(conversationId).map((rows) => rows.map(_toMessage).toList());
+  Stream<List<Message>> watchMessages(int conversationId) => _dao
+      .watchMessages(conversationId)
+      .map((rows) => rows.map(_toMessage).toList());
 
   @override
   Future<Conversation> createConversation() async {
@@ -145,8 +148,8 @@ class DriftConversationRepository implements ConversationRepository {
     final newTitle = conversation.title != null
         ? null
         : (trimmed.isNotEmpty
-            ? _deriveTitle(trimmed)
-            : (audio != null ? audioOnlyTitle : imageOnlyTitle));
+              ? _deriveTitle(trimmed)
+              : (audio != null ? audioOnlyTitle : imageOnlyTitle));
     await _dao.touchConversation(conversationId, now, title: newTitle);
 
     return _toMessage(await _dao.messageById(messageId));
@@ -172,7 +175,10 @@ class DriftConversationRepository implements ConversationRepository {
 
   @override
   Future<void> updateAssistantContent(int messageId, String content) {
-    return _dao.writeMessage(messageId, MessagesCompanion(content: Value(content)));
+    return _dao.writeMessage(
+      messageId,
+      MessagesCompanion(content: Value(content)),
+    );
   }
 
   @override
@@ -184,8 +190,14 @@ class DriftConversationRepository implements ConversationRepository {
   }
 
   @override
-  Future<void> finalizeAssistantMessage(int messageId, MessageStatus status) async {
-    await _dao.writeMessage(messageId, MessagesCompanion(status: Value(status.name)));
+  Future<void> finalizeAssistantMessage(
+    int messageId,
+    MessageStatus status,
+  ) async {
+    await _dao.writeMessage(
+      messageId,
+      MessagesCompanion(status: Value(status.name)),
+    );
     // Bump the parent conversation so the history list reflects the completed turn.
     final message = await _dao.messageById(messageId);
     await _dao.touchConversation(message.conversationId, _now());
@@ -209,7 +221,11 @@ class DriftConversationRepository implements ConversationRepository {
   }) async {
     // Field invariant (contract guarantee 1): a tool row must name its tool.
     if (toolName.trim().isEmpty) {
-      throw ArgumentError.value(toolName, 'toolName', 'A tool row must carry a tool name');
+      throw ArgumentError.value(
+        toolName,
+        'toolName',
+        'A tool row must carry a tool name',
+      );
     }
     final now = _now();
     final sequence = await _dao.nextSequence(conversationId);
@@ -242,7 +258,10 @@ class DriftConversationRepository implements ConversationRepository {
     // Terminal states only (contract guarantee 2) — `running` is never written by finalize.
     if (status == ToolCallStatus.running) {
       throw ArgumentError.value(
-          status, 'status', 'finalizeToolInvocation accepts terminal states only');
+        status,
+        'status',
+        'finalizeToolInvocation accepts terminal states only',
+      );
     }
     final encoded = result == null ? null : jsonEncode(result);
     // Result bound enforced at write (contract guarantee 4) — the dispatcher truncated first.

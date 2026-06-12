@@ -26,7 +26,8 @@ class DownloadUiState {
   final String? error;
 
   int get percent => (fraction * 100).round();
-  bool get isActive => phase == DownloadPhase.running || phase == DownloadPhase.paused;
+  bool get isActive =>
+      phase == DownloadPhase.running || phase == DownloadPhase.paused;
   bool get isComplete => phase == DownloadPhase.completed;
   bool get isFailed => phase == DownloadPhase.failed;
   bool get isCanceled => phase == DownloadPhase.canceled;
@@ -67,30 +68,35 @@ class DownloadController extends Notifier<DownloadUiState> {
     _subscription?.cancel();
     state = const DownloadUiState(phase: DownloadPhase.running);
     final downloader = ref.read(modelDownloaderProvider);
-    _subscription = downloader.download(ModelCatalog.downloadUrl).listen(
-      (progress) async {
-        state = DownloadUiState(
-          phase: progress.phase,
-          fraction: progress.fraction,
-          downloadedBytes: progress.downloadedBytes,
-          totalBytes: progress.totalBytes,
-          stalled: progress.stalled,
-          error: progress.errorMessage,
+    _subscription = downloader
+        .download(ModelCatalog.downloadUrl)
+        .listen(
+          (progress) async {
+            state = DownloadUiState(
+              phase: progress.phase,
+              fraction: progress.fraction,
+              downloadedBytes: progress.downloadedBytes,
+              totalBytes: progress.totalBytes,
+              stalled: progress.stalled,
+              error: progress.errorMessage,
+            );
+            if (progress.phase == DownloadPhase.completed) {
+              final path = await downloader.installedModelPath();
+              if (path != null) {
+                final size = await downloader.installedSizeBytes();
+                await ref
+                    .read(modelInstallRepositoryProvider)
+                    .markInstalled(filePath: path, sizeBytes: size ?? 0);
+              }
+            }
+          },
+          onError: (Object error) {
+            state = state.copyWith(
+              phase: DownloadPhase.failed,
+              error: '$error',
+            );
+          },
         );
-        if (progress.phase == DownloadPhase.completed) {
-          final path = await downloader.installedModelPath();
-          if (path != null) {
-            final size = await downloader.installedSizeBytes();
-            await ref
-                .read(modelInstallRepositoryProvider)
-                .markInstalled(filePath: path, sizeBytes: size ?? 0);
-          }
-        }
-      },
-      onError: (Object error) {
-        state = state.copyWith(phase: DownloadPhase.failed, error: '$error');
-      },
-    );
   }
 
   /// Cancel the in-flight download (FR-008/SC-003); the partial file is discarded by the downloader.
@@ -105,4 +111,6 @@ class DownloadController extends Notifier<DownloadUiState> {
 }
 
 final downloadControllerProvider =
-    NotifierProvider<DownloadController, DownloadUiState>(DownloadController.new);
+    NotifierProvider<DownloadController, DownloadUiState>(
+      DownloadController.new,
+    );

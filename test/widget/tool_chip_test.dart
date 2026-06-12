@@ -12,38 +12,43 @@ import 'package:flutter_test/flutter_test.dart';
 /// for the error state ONLY (Principle VI/X).
 void main() {
   Widget host(Message message) => MaterialApp(
-        theme: AppTheme.light,
-        darkTheme: AppTheme.dark,
-        themeMode: ThemeMode.dark,
-        home: Scaffold(body: ToolChip(message: message)),
-      );
+    theme: AppTheme.light,
+    darkTheme: AppTheme.dark,
+    themeMode: ThemeMode.dark,
+    home: Scaffold(body: ToolChip(message: message)),
+  );
 
   Message toolRow({
     required ToolCallStatus status,
     String content = '',
     Map<String, Object?>? args,
     Map<String, Object?>? result,
-  }) =>
-      Message(
-        id: 1,
-        conversationId: 1,
-        role: MessageRole.tool,
-        content: content,
-        sequence: 0,
-        createdAt: DateTime.utc(2026, 6, 10),
-        status: MessageStatus.complete,
-        toolName: 'get_device_info',
-        toolArgs: args,
-        toolStatus: status,
-        toolResult: result,
-      );
+  }) => Message(
+    id: 1,
+    conversationId: 1,
+    role: MessageRole.tool,
+    content: content,
+    sequence: 0,
+    createdAt: DateTime.utc(2026, 6, 10),
+    status: MessageStatus.complete,
+    toolName: 'get_device_info',
+    toolArgs: args,
+    toolStatus: status,
+    toolResult: result,
+  );
 
-  testWidgets('success: mono tag, args summary, quiet result line', (tester) async {
-    await tester.pumpWidget(host(toolRow(
-      status: ToolCallStatus.success,
-      content: 'battery 83%',
-      args: const {'section': 'battery'},
-    )));
+  testWidgets('success: mono tag, args summary, quiet result line', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      host(
+        toolRow(
+          status: ToolCallStatus.success,
+          content: 'battery 83%',
+          args: const {'section': 'battery'},
+        ),
+      ),
+    );
     await tester.pump();
 
     expect(find.text('TOOL · GET_DEVICE_INFO'), findsOneWidget);
@@ -60,38 +65,57 @@ void main() {
     expect(find.byKey(ToolChip.contentKey), findsNothing);
   });
 
-  testWidgets('error: the error glyph uses the sanctioned accent (red)', (tester) async {
-    await tester.pumpWidget(host(toolRow(
-      status: ToolCallStatus.error,
-      content: 'clipboard empty or not text',
-    )));
+  testWidgets('error: the error glyph uses the sanctioned accent (red)', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      host(
+        toolRow(
+          status: ToolCallStatus.error,
+          content: 'clipboard empty or not text',
+        ),
+      ),
+    );
     await tester.pump();
 
     const colors = AppColors.dark;
     final icon = tester.widget<Icon>(find.byIcon(Icons.error_outline));
-    expect(icon.color, colors.accent, reason: 'error is the sanctioned red use');
+    expect(
+      icon.color,
+      colors.accent,
+      reason: 'error is the sanctioned red use',
+    );
     expect(find.text('clipboard empty or not text'), findsOneWidget);
   });
 
   testWidgets('skipped: shows the skipped spec line', (tester) async {
-    await tester.pumpWidget(host(toolRow(status: ToolCallStatus.skipped, content: 'skipped')));
+    await tester.pumpWidget(
+      host(toolRow(status: ToolCallStatus.skipped, content: 'skipped')),
+    );
     await tester.pump();
     expect(find.text('skipped'), findsOneWidget);
   });
 
   testWidgets('carries a Semantics label naming tool + status', (tester) async {
-    await tester.pumpWidget(host(toolRow(
-      status: ToolCallStatus.success,
-      content: 'battery 83%',
-    )));
+    await tester.pumpWidget(
+      host(toolRow(status: ToolCallStatus.success, content: 'battery 83%')),
+    );
     await tester.pump();
-    expect(find.bySemanticsLabel('tool get_device_info: success — battery 83%'), findsOneWidget);
+    expect(
+      find.bySemanticsLabel('tool get_device_info: success — battery 83%'),
+      findsOneWidget,
+    );
   });
 
-  testWidgets('is non-interactive — no tap target (InkWell / GestureDetector)', (tester) async {
-    await tester.pumpWidget(host(toolRow(status: ToolCallStatus.success, content: 'ok')));
-    await tester.pump();
-    expect(find.byType(InkWell), findsNothing);
-    expect(find.byType(GestureDetector), findsNothing);
-  });
+  testWidgets(
+    'is non-interactive — no tap target (InkWell / GestureDetector)',
+    (tester) async {
+      await tester.pumpWidget(
+        host(toolRow(status: ToolCallStatus.success, content: 'ok')),
+      );
+      await tester.pump();
+      expect(find.byType(InkWell), findsNothing);
+      expect(find.byType(GestureDetector), findsNothing);
+    },
+  );
 }

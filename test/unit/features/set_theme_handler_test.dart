@@ -14,9 +14,10 @@ void main() {
     final container = makeContainer();
     addTearDown(container.dispose);
     // Default is dark; switch to light.
-    final outcome = await container
-        .read(toolDispatcherProvider)
-        .dispatch('set_theme', const {'theme': 'light'});
+    final outcome = await container.read(toolDispatcherProvider).dispatch(
+      'set_theme',
+      const {'theme': 'light'},
+    );
 
     expect(outcome, isA<ToolSuccess>());
     final success = outcome as ToolSuccess;
@@ -24,31 +25,41 @@ void main() {
     expect(success.result['alreadyActive'], false);
     expect(container.read(themeModeProvider), AppThemeMode.light);
     // Persisted (the row reflects the change).
-    expect((await container.read(settingsRepositoryProvider).read()).themeMode,
-        AppThemeMode.light);
+    expect(
+      (await container.read(settingsRepositoryProvider).read()).themeMode,
+      AppThemeMode.light,
+    );
   });
 
-  test('same-theme request → idempotent success with alreadyActive: true (FR-014)', () async {
-    final container = makeContainer();
-    addTearDown(container.dispose);
-    // Default theme is dark — asking for dark again is already-active.
-    final outcome = await container
-        .read(toolDispatcherProvider)
-        .dispatch('set_theme', const {'theme': 'dark'});
+  test(
+    'same-theme request → idempotent success with alreadyActive: true (FR-014)',
+    () async {
+      final container = makeContainer();
+      addTearDown(container.dispose);
+      // Default theme is dark — asking for dark again is already-active.
+      final outcome = await container.read(toolDispatcherProvider).dispatch(
+        'set_theme',
+        const {'theme': 'dark'},
+      );
 
-    final success = outcome as ToolSuccess;
-    expect(success.result['alreadyActive'], true);
-    expect(container.read(themeModeProvider), AppThemeMode.dark);
-  });
+      final success = outcome as ToolSuccess;
+      expect(success.result['alreadyActive'], true);
+      expect(container.read(themeModeProvider), AppThemeMode.dark);
+    },
+  );
 
-  test('invalid theme value is rejected by the schema before the handler runs', () async {
-    final container = makeContainer();
-    addTearDown(container.dispose);
-    final outcome = await container
-        .read(toolDispatcherProvider)
-        .dispatch('set_theme', const {'theme': 'sepia'});
-    expect(outcome, isA<ToolInvalidArgs>());
-    // The theme is untouched.
-    expect(container.read(themeModeProvider), AppThemeMode.dark);
-  });
+  test(
+    'invalid theme value is rejected by the schema before the handler runs',
+    () async {
+      final container = makeContainer();
+      addTearDown(container.dispose);
+      final outcome = await container.read(toolDispatcherProvider).dispatch(
+        'set_theme',
+        const {'theme': 'sepia'},
+      );
+      expect(outcome, isA<ToolInvalidArgs>());
+      // The theme is untouched.
+      expect(container.read(themeModeProvider), AppThemeMode.dark);
+    },
+  );
 }

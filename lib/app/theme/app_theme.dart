@@ -15,8 +15,9 @@ abstract final class AppTheme {
   static ThemeData get light => _build(AppColors.light, Brightness.light);
 
   static ThemeData _build(AppColors c, Brightness brightness) {
-    final base =
-        brightness == Brightness.dark ? const ColorScheme.dark() : const ColorScheme.light();
+    final base = brightness == Brightness.dark
+        ? const ColorScheme.dark()
+        : const ColorScheme.light();
     final scheme = base.copyWith(
       brightness: brightness,
       primary: c.accent,
@@ -97,7 +98,10 @@ abstract final class AppTheme {
   /// chat title scale — a reply is a bubble, not a document — and links/highlights stay
   /// monochrome: the red accent is reserved for active/stop/destructive states (Principle X),
   /// so gpt_markdown's blue/red link defaults are overridden here.
-  static GptMarkdownThemeData _markdownTheme(AppColors c, Brightness brightness) {
+  static GptMarkdownThemeData _markdownTheme(
+    AppColors c,
+    Brightness brightness,
+  ) {
     TextStyle tinted(TextStyle s) => s.copyWith(color: c.textPrimary);
     return GptMarkdownThemeData(
       brightness: brightness,

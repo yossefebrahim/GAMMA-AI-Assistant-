@@ -30,14 +30,14 @@ void main() {
   tearDown(() => container.dispose());
 
   Widget app() => UncontrolledProviderScope(
-        container: container,
-        child: MaterialApp(
-          theme: AppTheme.light,
-          darkTheme: AppTheme.dark,
-          themeMode: ThemeMode.dark,
-          home: const ChatScreen(),
-        ),
-      );
+    container: container,
+    child: MaterialApp(
+      theme: AppTheme.light,
+      darkTheme: AppTheme.dark,
+      themeMode: ThemeMode.dark,
+      home: const ChatScreen(),
+    ),
+  );
 
   Future<void> sendMessage(WidgetTester tester, String text) async {
     await tester.enterText(find.byKey(Composer.fieldKey), text);
@@ -46,37 +46,41 @@ void main() {
     await tester.pump();
   }
 
-  testWidgets('stop replaces send during generation and is the only red affordance (Q4)',
-      (tester) async {
-    gemma
-      ..scriptedDeltas = ['one ', 'two ', 'three ', 'four']
-      ..deltaInterval = const Duration(milliseconds: 60);
+  testWidgets(
+    'stop replaces send during generation and is the only red affordance (Q4)',
+    (tester) async {
+      gemma
+        ..scriptedDeltas = ['one ', 'two ', 'three ', 'four']
+        ..deltaInterval = const Duration(milliseconds: 60);
 
-    await tester.pumpWidget(app());
-    await tester.pump(); // resolve the model session
+      await tester.pumpWidget(app());
+      await tester.pump(); // resolve the model session
 
-    // Idle: send is shown, stop is not.
-    expect(find.byKey(Composer.sendKey), findsOneWidget);
-    expect(find.byKey(Composer.stopKey), findsNothing);
+      // Idle: send is shown, stop is not.
+      expect(find.byKey(Composer.sendKey), findsOneWidget);
+      expect(find.byKey(Composer.stopKey), findsNothing);
 
-    await sendMessage(tester, 'hi');
-    await tester.pump(const Duration(milliseconds: 30)); // mid-generation
+      await sendMessage(tester, 'hi');
+      await tester.pump(const Duration(milliseconds: 30)); // mid-generation
 
-    // During generation the send is replaced by the (red) stop.
-    expect(find.byKey(Composer.stopKey), findsOneWidget);
-    expect(find.byKey(Composer.sendKey), findsNothing);
+      // During generation the send is replaced by the (red) stop.
+      expect(find.byKey(Composer.stopKey), findsOneWidget);
+      expect(find.byKey(Composer.sendKey), findsNothing);
 
-    await tester.tap(find.byKey(Composer.stopKey));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 30));
+      await tester.tap(find.byKey(Composer.stopKey));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 30));
 
-    // After stop, send returns.
-    expect(find.byKey(Composer.sendKey), findsOneWidget);
-    expect(find.byKey(Composer.stopKey), findsNothing);
-    expect(gemma.stopCount, 1);
-  });
+      // After stop, send returns.
+      expect(find.byKey(Composer.sendKey), findsOneWidget);
+      expect(find.byKey(Composer.stopKey), findsNothing);
+      expect(gemma.stopCount, 1);
+    },
+  );
 
-  testWidgets('reply renders incrementally, not as one block (FR-013)', (tester) async {
+  testWidgets('reply renders incrementally, not as one block (FR-013)', (
+    tester,
+  ) async {
     gemma
       ..scriptedDeltas = ['Hello ', 'there ', 'friend']
       ..deltaInterval = const Duration(milliseconds: 40);
@@ -96,7 +100,9 @@ void main() {
     expect(find.textContaining('Hello there friend'), findsOneWidget);
   });
 
-  testWidgets('the message list stays scrollable while streaming (SC-011)', (tester) async {
+  testWidgets('the message list stays scrollable while streaming (SC-011)', (
+    tester,
+  ) async {
     gemma
       ..scriptedDeltas = ['streaming ', 'reply']
       ..deltaInterval = const Duration(milliseconds: 40);

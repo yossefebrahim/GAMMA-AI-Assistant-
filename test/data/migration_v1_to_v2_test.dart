@@ -22,10 +22,12 @@ void main() {
     if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
   });
 
-  test('v1 → v2 adds nullable image columns and preserves existing rows (R5, FR-017)', () async {
-    // --- Seed a v1 database (the 001 schema — messages has NO image columns). ---
-    final raw = sqlite3.open(dbFile.path);
-    raw.execute('''
+  test(
+    'v1 → v2 adds nullable image columns and preserves existing rows (R5, FR-017)',
+    () async {
+      // --- Seed a v1 database (the 001 schema — messages has NO image columns). ---
+      final raw = sqlite3.open(dbFile.path);
+      raw.execute('''
       CREATE TABLE conversations (
         id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
         title TEXT NULL,
@@ -41,51 +43,65 @@ void main() {
         created_at TEXT NOT NULL,
         status TEXT NOT NULL
       );
+      CREATE TABLE app_settings_table (
+        id INTEGER NOT NULL PRIMARY KEY,
+        theme_mode TEXT NOT NULL,
+        license_acknowledged_at TEXT NULL
+      );
     ''');
-    raw.execute('''
+      raw.execute('''
       INSERT INTO conversations (id, title, created_at, updated_at)
       VALUES (1, 'old chat', '2026-06-01T00:00:00.000Z', '2026-06-01T00:00:00.000Z');
     ''');
-    raw.execute('''
+      raw.execute('''
       INSERT INTO messages (id, conversation_id, role, content, sequence, created_at, status)
       VALUES (1, 1, 'user', 'hello from v1', 0, '2026-06-01T00:00:00.000Z', 'complete');
     ''');
-    raw.execute('PRAGMA user_version = 1;');
-    raw.close();
+      raw.execute('PRAGMA user_version = 1;');
+      raw.close();
 
-    // --- Open at the current schema → drift runs onUpgrade(1, …), through the v2 block (and on
-    // through v3's audio block, 003). ---
-    final db = AppDatabase(NativeDatabase(dbFile));
-    addTearDown(db.close);
+      // --- Open at the current schema → drift runs onUpgrade(1, 5): the v2 image block and on
+      // through the v3 audio (003), v4 tool (004), and v5 memory (005) blocks. ---
+      final db = AppDatabase(NativeDatabase(dbFile));
+      addTearDown(db.close);
 
-    // The new columns exist and old rows survive with them defaulting to null (FR-017).
-    final messages = await db.select(db.messages).get();
-    expect(messages, hasLength(1));
-    expect(messages.single.content, 'hello from v1');
-    expect(messages.single.imagePath, isNull);
-    expect(messages.single.imageMimeType, isNull);
-    expect(messages.single.audioPath, isNull, reason: 'v3 audio columns land too (003)');
-    expect(messages.single.audioMimeType, isNull);
+      // The new columns exist and old rows survive with them defaulting to null (FR-017).
+      final messages = await db.select(db.messages).get();
+      expect(messages, hasLength(1));
+      expect(messages.single.content, 'hello from v1');
+      expect(messages.single.imagePath, isNull);
+      expect(messages.single.imageMimeType, isNull);
+      expect(
+        messages.single.audioPath,
+        isNull,
+        reason: 'v3 audio columns land too (003)',
+      );
+      expect(messages.single.audioMimeType, isNull);
 
-    // The conversation survived the upgrade.
-    final conversations = await db.select(db.conversations).get();
-    expect(conversations.single.title, 'old chat');
+      // The conversation survived the upgrade.
+      final conversations = await db.select(db.conversations).get();
+      expect(conversations.single.title, 'old chat');
 
-    expect(db.schemaVersion, 4);
-  });
+      expect(db.schemaVersion, 5);
+    },
+  );
 
   test('fresh installs are created with the image columns (onCreate)', () async {
     final db = AppDatabase(NativeDatabase.memory());
     addTearDown(db.close);
 
     // A round-trip through the new columns proves they exist on a fresh schema.
-    final convId = await db.into(db.conversations).insert(
+    final convId = await db
+        .into(db.conversations)
+        .insert(
           ConversationsCompanion.insert(
             createdAt: DateTime.utc(2026, 6, 8),
             updatedAt: DateTime.utc(2026, 6, 8),
           ),
         );
-    await db.into(db.messages).insert(
+    await db
+        .into(db.messages)
+        .insert(
           MessagesCompanion.insert(
             conversationId: convId,
             role: 'user',

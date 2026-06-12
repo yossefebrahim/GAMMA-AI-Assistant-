@@ -16,6 +16,7 @@ class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
   static const Key deleteModelKey = Key('settings-delete-model');
+  static const Key memoryRowKey = Key('settings-memory-row');
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -25,23 +26,38 @@ class SettingsScreen extends ConsumerWidget {
     final storage = ref.watch(modelStorageBytesProvider);
 
     return Scaffold(
-      appBar: AppBar(title: Text(AppText.spec('settings'), style: theme.textTheme.labelSmall)),
+      appBar: AppBar(
+        title: Text(
+          AppText.spec('settings'),
+          style: theme.textTheme.labelSmall,
+        ),
+      ),
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: AppSpacing.s8),
         children: [
           const _SectionHeader(label: 'model'),
           ListTile(
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: AppSpacing.s16, vertical: AppSpacing.s4),
-            title: Text('model ( ${ModelCatalog.displayName} )', style: theme.textTheme.bodyLarge),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.s16,
+              vertical: AppSpacing.s4,
+            ),
+            title: Text(
+              'model ( ${ModelCatalog.displayName} )',
+              style: theme.textTheme.bodyLarge,
+            ),
             subtitle: Padding(
               padding: const EdgeInsets.only(top: AppSpacing.s4),
               child: Text(
-                AppText.spec(storage.maybeWhen(
-                  data: (bytes) => bytes == null ? 'not installed' : _formatBytes(bytes),
-                  orElse: () => '…',
-                )),
-                style: theme.textTheme.labelSmall?.copyWith(color: colors.textSecondary),
+                AppText.spec(
+                  storage.maybeWhen(
+                    data: (bytes) =>
+                        bytes == null ? 'not installed' : _formatBytes(bytes),
+                    orElse: () => '…',
+                  ),
+                ),
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: colors.textSecondary,
+                ),
               ),
             ),
             trailing: TextButton(
@@ -55,15 +71,41 @@ class SettingsScreen extends ConsumerWidget {
           const _SectionHeader(label: 'appearance'),
           for (final mode in AppThemeMode.values)
             ListTile(
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: AppSpacing.s16, vertical: AppSpacing.s4),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.s16,
+                vertical: AppSpacing.s4,
+              ),
               title: Text(mode.name, style: theme.textTheme.bodyLarge),
               trailing: themeMode == mode
                   // Selected = monochrome check, not a colored highlight.
                   ? Icon(Icons.check, color: colors.textPrimary)
                   : null,
-              onTap: () => ref.read(settingsControllerProvider.notifier).setTheme(mode),
+              onTap: () =>
+                  ref.read(settingsControllerProvider.notifier).setTheme(mode),
             ),
+          const Divider(height: 1),
+          const _SectionHeader(label: 'memory'),
+          ListTile(
+            key: memoryRowKey,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.s16,
+              vertical: AppSpacing.s4,
+            ),
+            title: Text('durable facts', style: theme.textTheme.bodyLarge),
+            subtitle: Padding(
+              padding: const EdgeInsets.only(top: AppSpacing.s4),
+              child: Text(
+                AppText.spec(
+                  'facts the assistant remembers across conversations',
+                ),
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: colors.textSecondary,
+                ),
+              ),
+            ),
+            trailing: Icon(Icons.chevron_right, color: colors.textSecondary),
+            onTap: () => Navigator.of(context).pushNamed(AppRoutes.memory),
+          ),
         ],
       ),
     );
@@ -79,7 +121,9 @@ class SettingsScreen extends ConsumerWidget {
         title: Text('delete the model?', style: theme.textTheme.titleMedium),
         content: Text(
           'this frees the ~2.4 gb on disk. you will need to download it again to chat.',
-          style: theme.textTheme.bodyMedium?.copyWith(color: colors.textSecondary),
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: colors.textSecondary,
+          ),
         ),
         actions: [
           TextButton(
@@ -134,7 +178,9 @@ class _SectionHeader extends StatelessWidget {
       ),
       child: Text(
         AppText.spec(label),
-        style: theme.textTheme.labelSmall?.copyWith(color: colors.textSecondary),
+        style: theme.textTheme.labelSmall?.copyWith(
+          color: colors.textSecondary,
+        ),
       ),
     );
   }

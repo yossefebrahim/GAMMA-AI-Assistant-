@@ -11,14 +11,14 @@ part 'daos/conversation_dao.dart';
 /// (FR-032 / clarification Q3). Pass an explicit [executor] (e.g. `NativeDatabase.memory()`) in
 /// tests to run entirely off-device.
 @DriftDatabase(
-  tables: [Conversations, Messages, ModelInstalls, AppSettingsTable],
+  tables: [Conversations, Messages, ModelInstalls, AppSettingsTable, Memories],
   daos: [ConversationDao],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _open());
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   // Store DateTimes as ISO-8601 TEXT (UTC) instead of integer Unix *seconds* (drift's default).
   // This preserves sub-second precision so the history list orders correctly when conversations
@@ -29,36 +29,46 @@ class AppDatabase extends _$AppDatabase {
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
-        onCreate: (m) => m.createAll(),
-        onUpgrade: (m, from, to) async {
-          // v1 → v2 (002): add the nullable image columns to `messages`. 001 has shipped, so
-          // upgraders' existing rows must survive; the columns are nullable → old text
-          // conversations stay valid with NULL (FR-017, R5). Fresh installs get v2 via onCreate.
-          if (from < 2) {
-            await m.addColumn(messages, messages.imagePath);
-            await m.addColumn(messages, messages.imageMimeType);
-          }
-          // v2 → v3 (003): add the nullable audio columns (additive only; v2 rows untouched —
-          // data-model.md §2). Fresh installs land on v3 directly via onCreate.
-          if (from < 3) {
-            await m.addColumn(messages, messages.audioPath);
-            await m.addColumn(messages, messages.audioMimeType);
-          }
-          // v3 → v4 (004): add the nullable tool columns + the `role='tool'` value (additive only;
-          // v3 rows untouched, all four columns NULL — data-model.md §2). Fresh installs land on v4
-          // directly via onCreate.
-          if (from < 4) {
-            await m.addColumn(messages, messages.toolName);
-            await m.addColumn(messages, messages.toolArgs);
-            await m.addColumn(messages, messages.toolStatus);
-            await m.addColumn(messages, messages.toolResult);
-          }
-        },
-        beforeOpen: (details) async {
-          // Required so the messages→conversations cascade actually fires (FR-022).
-          await customStatement('PRAGMA foreign_keys = ON');
-        },
-      );
+    onCreate: (m) => m.createAll(),
+    onUpgrade: (m, from, to) async {
+      // v1 → v2 (002): add the nullable image columns to `messages`. 001 has shipped, so
+      // upgraders' existing rows must survive; the columns are nullable → old text
+      // conversations stay valid with NULL (FR-017, R5). Fresh installs get v2 via onCreate.
+      if (from < 2) {
+        await m.addColumn(messages, messages.imagePath);
+        await m.addColumn(messages, messages.imageMimeType);
+      }
+      // v2 → v3 (003): add the nullable audio columns (additive only; v2 rows untouched —
+      // data-model.md §2). Fresh installs land on v3 directly via onCreate.
+      if (from < 3) {
+        await m.addColumn(messages, messages.audioPath);
+        await m.addColumn(messages, messages.audioMimeType);
+      }
+      // v3 → v4 (004): add the nullable tool columns + the `role='tool'` value (additive only;
+      // v3 rows untouched, all four columns NULL — data-model.md §2). Fresh installs land on v4
+      // directly via onCreate.
+      if (from < 4) {
+        await m.addColumn(messages, messages.toolName);
+        await m.addColumn(messages, messages.toolArgs);
+        await m.addColumn(messages, messages.toolStatus);
+        await m.addColumn(messages, messages.toolResult);
+      }
+      // v4 → v5 (005): add the `memories` table + its `(active, category, updated_at)` index and
+      // the `memory_enabled` flag on `app_settings` (additive only; v4 rows untouched —
+      // data-model §2). The existing single app_settings row defaults to memory_enabled = 1.
+      // The index is created EXPLICITLY: drift emits @TableIndex as a top-level schema entity, so
+      // `createTable` alone does not create it. Fresh installs land on v5 directly via onCreate.
+      if (from < 5) {
+        await m.createTable(memories);
+        await m.createIndex(idxMemoriesActive);
+        await m.addColumn(appSettingsTable, appSettingsTable.memoryEnabled);
+      }
+    },
+    beforeOpen: (details) async {
+      // Required so the messages→conversations cascade actually fires (FR-022).
+      await customStatement('PRAGMA foreign_keys = ON');
+    },
+  );
 
   static QueryExecutor _open() => driftDatabase(name: 'gemma_assistant');
 }

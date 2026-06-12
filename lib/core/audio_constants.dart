@@ -36,7 +36,8 @@ abstract final class AudioConstants {
     final payload = byteLength - wavHeaderBytes;
     if (payload <= 0) return Duration.zero;
     return Duration(
-      milliseconds: (payload * Duration.millisecondsPerSecond) ~/ bytesPerSecond,
+      milliseconds:
+          (payload * Duration.millisecondsPerSecond) ~/ bytesPerSecond,
     );
   }
 

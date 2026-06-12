@@ -15,9 +15,11 @@ import 'package:audioplayers/audioplayers.dart';
 class AudioplayersPreviewPlayer implements AudioPreviewPlayer {
   AudioplayersPreviewPlayer() {
     _playerSub = _player.onPlayerStateChanged.listen((playerState) {
-      _emit(playerState == PlayerState.playing
-          ? AudioPreviewState.playing
-          : AudioPreviewState.idle);
+      _emit(
+        playerState == PlayerState.playing
+            ? AudioPreviewState.playing
+            : AudioPreviewState.idle,
+      );
     });
   }
 

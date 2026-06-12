@@ -31,15 +31,15 @@ void main() {
   }
 
   Widget app(ProviderContainer container) => UncontrolledProviderScope(
-        container: container,
-        child: MaterialApp(
-          theme: AppTheme.light,
-          darkTheme: AppTheme.dark,
-          themeMode: ThemeMode.dark,
-          home: const LicenseScreen(),
-          onGenerateRoute: AppRouter.onGenerateRoute,
-        ),
-      );
+    container: container,
+    child: MaterialApp(
+      theme: AppTheme.light,
+      darkTheme: AppTheme.dark,
+      themeMode: ThemeMode.dark,
+      home: const LicenseScreen(),
+      onGenerateRoute: AppRouter.onGenerateRoute,
+    ),
+  );
 
   Future<void> acknowledgeAndContinue(WidgetTester tester) async {
     await tester.tap(find.byKey(LicenseScreen.checkboxKey));
@@ -51,43 +51,57 @@ void main() {
     await tester.pump(const Duration(milliseconds: 350)); // route transition
   }
 
-  testWidgets('insufficient memory (6 GB) is blocked, no download starts (FR-004/SC-008)',
-      (tester) async {
-    final container = containerWith(FakeDevicePreflightService.insufficientMemory());
-    addTearDown(container.dispose);
+  testWidgets(
+    'insufficient memory (6 GB) is blocked, no download starts (FR-004/SC-008)',
+    (tester) async {
+      final container = containerWith(
+        FakeDevicePreflightService.insufficientMemory(),
+      );
+      addTearDown(container.dispose);
 
-    await tester.pumpWidget(app(container));
-    await acknowledgeAndContinue(tester);
+      await tester.pumpWidget(app(container));
+      await acknowledgeAndContinue(tester);
 
-    expect(find.byType(PreflightBlockedScreen), findsOneWidget);
-    expect(find.text('not enough memory'), findsOneWidget);
-    expect(find.byType(DownloadScreen), findsNothing);
-    expect(downloader.downloadCount, 0);
-  });
+      expect(find.byType(PreflightBlockedScreen), findsOneWidget);
+      expect(find.text('not enough memory'), findsOneWidget);
+      expect(find.byType(DownloadScreen), findsNothing);
+      expect(downloader.downloadCount, 0);
+    },
+  );
 
-  testWidgets('unsupported ABI is blocked with the architecture reason (FR-006)', (tester) async {
-    final container = containerWith(FakeDevicePreflightService.unsupportedAbi());
-    addTearDown(container.dispose);
+  testWidgets(
+    'unsupported ABI is blocked with the architecture reason (FR-006)',
+    (tester) async {
+      final container = containerWith(
+        FakeDevicePreflightService.unsupportedAbi(),
+      );
+      addTearDown(container.dispose);
 
-    await tester.pumpWidget(app(container));
-    await acknowledgeAndContinue(tester);
+      await tester.pumpWidget(app(container));
+      await acknowledgeAndContinue(tester);
 
-    expect(find.byType(PreflightBlockedScreen), findsOneWidget);
-    expect(find.text('unsupported processor'), findsOneWidget);
-    expect(downloader.downloadCount, 0);
-  });
+      expect(find.byType(PreflightBlockedScreen), findsOneWidget);
+      expect(find.text('unsupported processor'), findsOneWidget);
+      expect(downloader.downloadCount, 0);
+    },
+  );
 
-  testWidgets('exactly 7000 MB + arm64 is eligible and proceeds to download (FR-003 boundary)',
-      (tester) async {
-    final container = containerWith(
-      FakeDevicePreflightService.fromProbe(ramMb: 7000, abis: const ['arm64-v8a']),
-    );
-    addTearDown(container.dispose);
+  testWidgets(
+    'exactly 7000 MB + arm64 is eligible and proceeds to download (FR-003 boundary)',
+    (tester) async {
+      final container = containerWith(
+        FakeDevicePreflightService.fromProbe(
+          ramMb: 7000,
+          abis: const ['arm64-v8a'],
+        ),
+      );
+      addTearDown(container.dispose);
 
-    await tester.pumpWidget(app(container));
-    await acknowledgeAndContinue(tester);
+      await tester.pumpWidget(app(container));
+      await acknowledgeAndContinue(tester);
 
-    expect(find.byType(DownloadScreen), findsOneWidget);
-    expect(find.byType(PreflightBlockedScreen), findsNothing);
-  });
+      expect(find.byType(DownloadScreen), findsOneWidget);
+      expect(find.byType(PreflightBlockedScreen), findsNothing);
+    },
+  );
 }

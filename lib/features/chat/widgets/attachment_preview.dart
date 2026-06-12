@@ -48,7 +48,10 @@ class AttachmentPreview extends StatelessWidget {
                 height: _thumbSize,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(AppSpacing.radiusControl),
-                  border: Border.all(color: colors.outline, width: AppSpacing.hairline),
+                  border: Border.all(
+                    color: colors.outline,
+                    width: AppSpacing.hairline,
+                  ),
                   color: colors.surfaceContainerHigh,
                 ),
                 clipBehavior: Clip.antiAlias,
@@ -57,7 +60,9 @@ class AttachmentPreview extends StatelessWidget {
                   fit: BoxFit.cover,
                   // Decode at thumbnail size — the picker temp file is up to 1536px, a ~12 MB
                   // texture for a 56dp thumb that janks the composer/keyboard relayout.
-                  cacheWidth: (_thumbSize * MediaQuery.devicePixelRatioOf(context)).round(),
+                  cacheWidth:
+                      (_thumbSize * MediaQuery.devicePixelRatioOf(context))
+                          .round(),
                   errorBuilder: (context, error, stack) => Icon(
                     Icons.broken_image_outlined,
                     color: colors.textSecondary,

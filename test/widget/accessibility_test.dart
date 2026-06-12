@@ -15,7 +15,9 @@ import '../helpers/fake_gemma_service.dart';
 /// contrast measurement run on a device; the contrast rule is enforced in the tokens — timestamps
 /// use `textSecondary`, red is reserved for large/icon/fill.)
 void main() {
-  testWidgets('the composer send control is at least a 48dp touch target', (tester) async {
+  testWidgets('the composer send control is at least a 48dp touch target', (
+    tester,
+  ) async {
     final container = makeContainer(
       overrides: [gemmaServiceProvider.overrideWithValue(FakeGemmaService())],
     );

@@ -28,24 +28,36 @@ class WelcomeScreen extends ConsumerWidget {
               const Spacer(),
               Text(
                 'gemma',
-                style: AppText.dotMatrix(fontSize: 56, color: colors.textPrimary),
+                style: AppText.dotMatrix(
+                  fontSize: 56,
+                  color: colors.textPrimary,
+                ),
               ),
               const SizedBox(height: AppSpacing.s12),
-              Text('everything runs on your device.', style: theme.textTheme.titleMedium),
+              Text(
+                'everything runs on your device.',
+                style: theme.textTheme.titleMedium,
+              ),
               const SizedBox(height: AppSpacing.s24),
               Text(
                 key: explainerKey,
                 'your conversations never leave this phone. the model runs fully on-device — no '
                 'servers, no accounts, no telemetry. the only time the app uses the network is the '
                 'one-time model download.',
-                style: theme.textTheme.bodyLarge?.copyWith(color: colors.textSecondary),
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: colors.textSecondary,
+                ),
               ),
               const SizedBox(height: AppSpacing.s24),
-              Text(AppText.spec('private · offline · on-device'), style: theme.textTheme.labelSmall),
+              Text(
+                AppText.spec('private · offline · on-device'),
+                style: theme.textTheme.labelSmall,
+              ),
               const Spacer(flex: 2),
               PrimaryButton(
                 label: 'get started',
-                onPressed: () => Navigator.of(context).pushNamed(AppRoutes.license),
+                onPressed: () =>
+                    Navigator.of(context).pushNamed(AppRoutes.license),
               ),
               const SizedBox(height: AppSpacing.s8),
             ],

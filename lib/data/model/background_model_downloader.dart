@@ -35,7 +35,10 @@ class BackgroundModelDownloader implements ModelDownloader {
       ],
     );
     FileDownloader().configureNotification(
-      running: const TaskNotification('downloading model', 'gemma 4 e2b · {progress}'),
+      running: const TaskNotification(
+        'downloading model',
+        'gemma 4 e2b · {progress}',
+      ),
       complete: const TaskNotification('model ready', 'gemma 4 e2b installed'),
       error: const TaskNotification('download failed', 'tap to retry'),
       progressBar: true,
@@ -50,8 +53,10 @@ class BackgroundModelDownloader implements ModelDownloader {
     return Directory('${docs.path}/${ModelCatalog.directory}');
   }
 
-  Future<File> _finalFile() async => File('${(await _modelsDir()).path}/${ModelCatalog.fileName}');
-  Future<File> _partFile() async => File('${(await _modelsDir()).path}/${ModelCatalog.partFileName}');
+  Future<File> _finalFile() async =>
+      File('${(await _modelsDir()).path}/${ModelCatalog.fileName}');
+  Future<File> _partFile() async =>
+      File('${(await _modelsDir()).path}/${ModelCatalog.partFileName}');
 
   @override
   Stream<DownloadProgress> download(String url) {
@@ -102,76 +107,83 @@ class BackgroundModelDownloader implements ModelDownloader {
         );
         _taskId = task.taskId;
 
-        updatesSub = FileDownloader()
-            .updates
+        updatesSub = FileDownloader().updates
             .where((update) => update.task.taskId == _taskId)
             .listen((update) async {
-          switch (update) {
-            case TaskProgressUpdate():
-              lastFraction = update.progress.clamp(0.0, 1.0);
-              lastTotal = update.expectedFileSize;
-              lastBytes = update.hasExpectedFileSize
-                  ? (update.progress * update.expectedFileSize).round()
-                  : 0;
-              armStallTimer();
-              emit(
-                DownloadProgress(
-                  phase: DownloadPhase.running,
-                  fraction: lastFraction,
-                  downloadedBytes: lastBytes,
-                  totalBytes: update.hasExpectedFileSize ? update.expectedFileSize : null,
-                ),
-              );
-            case TaskStatusUpdate():
-              switch (update.status) {
-                case TaskStatus.complete:
-                  final ok = await _finalizeInstall();
-                  await finish(
-                    DownloadProgress(
-                      phase: ok ? DownloadPhase.completed : DownloadPhase.failed,
-                      fraction: 1,
-                      downloadedBytes: lastBytes,
-                      totalBytes: lastTotal >= 0 ? lastTotal : null,
-                      errorMessage: ok ? null : 'could not finalize the downloaded file',
-                    ),
-                  );
-                case TaskStatus.failed:
-                case TaskStatus.notFound:
-                  await finish(
-                    DownloadProgress(
-                      phase: DownloadPhase.failed,
-                      fraction: lastFraction,
-                      downloadedBytes: lastBytes,
-                      totalBytes: lastTotal >= 0 ? lastTotal : null,
-                      errorMessage: update.exception?.description ?? 'download failed',
-                    ),
-                  );
-                case TaskStatus.canceled:
-                  await _deletePartial();
-                  await finish(
-                    const DownloadProgress(
-                      phase: DownloadPhase.canceled,
-                      fraction: 0,
-                      downloadedBytes: 0,
-                    ),
-                  );
-                case TaskStatus.paused:
+              switch (update) {
+                case TaskProgressUpdate():
+                  lastFraction = update.progress.clamp(0.0, 1.0);
+                  lastTotal = update.expectedFileSize;
+                  lastBytes = update.hasExpectedFileSize
+                      ? (update.progress * update.expectedFileSize).round()
+                      : 0;
+                  armStallTimer();
                   emit(
                     DownloadProgress(
-                      phase: DownloadPhase.paused,
+                      phase: DownloadPhase.running,
                       fraction: lastFraction,
                       downloadedBytes: lastBytes,
-                      totalBytes: lastTotal >= 0 ? lastTotal : null,
+                      totalBytes: update.hasExpectedFileSize
+                          ? update.expectedFileSize
+                          : null,
                     ),
                   );
-                case TaskStatus.enqueued:
-                case TaskStatus.running:
-                case TaskStatus.waitingToRetry:
-                  // Progress updates carry the detail; nothing to surface on these transitions.
-                  break;
+                case TaskStatusUpdate():
+                  switch (update.status) {
+                    case TaskStatus.complete:
+                      final ok = await _finalizeInstall();
+                      await finish(
+                        DownloadProgress(
+                          phase: ok
+                              ? DownloadPhase.completed
+                              : DownloadPhase.failed,
+                          fraction: 1,
+                          downloadedBytes: lastBytes,
+                          totalBytes: lastTotal >= 0 ? lastTotal : null,
+                          errorMessage: ok
+                              ? null
+                              : 'could not finalize the downloaded file',
+                        ),
+                      );
+                    case TaskStatus.failed:
+                    case TaskStatus.notFound:
+                      await finish(
+                        DownloadProgress(
+                          phase: DownloadPhase.failed,
+                          fraction: lastFraction,
+                          downloadedBytes: lastBytes,
+                          totalBytes: lastTotal >= 0 ? lastTotal : null,
+                          errorMessage:
+                              update.exception?.description ??
+                              'download failed',
+                        ),
+                      );
+                    case TaskStatus.canceled:
+                      await _deletePartial();
+                      await finish(
+                        const DownloadProgress(
+                          phase: DownloadPhase.canceled,
+                          fraction: 0,
+                          downloadedBytes: 0,
+                        ),
+                      );
+                    case TaskStatus.paused:
+                      emit(
+                        DownloadProgress(
+                          phase: DownloadPhase.paused,
+                          fraction: lastFraction,
+                          downloadedBytes: lastBytes,
+                          totalBytes: lastTotal >= 0 ? lastTotal : null,
+                        ),
+                      );
+                    case TaskStatus.enqueued:
+                    case TaskStatus.running:
+                    case TaskStatus.waitingToRetry:
+                      // Progress updates carry the detail; nothing to surface on these transitions.
+                      break;
+                  }
               }
-          }
-        });
+            });
 
         final enqueued = await FileDownloader().enqueue(task);
         if (!enqueued) {
@@ -180,7 +192,8 @@ class BackgroundModelDownloader implements ModelDownloader {
               phase: DownloadPhase.failed,
               fraction: 0,
               downloadedBytes: 0,
-              errorMessage: 'could not start the download (insufficient space?)',
+              errorMessage:
+                  'could not start the download (insufficient space?)',
             ),
           );
         }

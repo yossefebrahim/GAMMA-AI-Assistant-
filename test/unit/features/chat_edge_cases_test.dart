@@ -23,27 +23,41 @@ void main() {
 
   tearDown(() => container.dispose());
 
-  ConversationRepository repo() => container.read(conversationRepositoryProvider);
+  ConversationRepository repo() =>
+      container.read(conversationRepositoryProvider);
 
-  test('empty / whitespace send is a no-op — no conversation is created', () async {
-    await container.read(chatControllerProvider.notifier).send('   ');
-    expect(container.read(chatControllerProvider).conversationId, isNull);
-  });
+  test(
+    'empty / whitespace send is a no-op — no conversation is created',
+    () async {
+      await container.read(chatControllerProvider.notifier).send('   ');
+      expect(container.read(chatControllerProvider).conversationId, isNull);
+    },
+  );
 
-  test('stop before the first token yields an empty stoppedPartial turn', () async {
-    gemma
-      ..scriptedDeltas = ['too late']
-      ..deltaInterval = const Duration(milliseconds: 200);
+  test(
+    'stop before the first token yields an empty stoppedPartial turn',
+    () async {
+      gemma
+        ..scriptedDeltas = ['too late']
+        ..deltaInterval = const Duration(milliseconds: 200);
 
-    final sending = container.read(chatControllerProvider.notifier).send('hi');
-    await Future<void>.delayed(const Duration(milliseconds: 10)); // before any token
-    await container.read(chatControllerProvider.notifier).stop();
-    await sending;
+      final sending = container
+          .read(chatControllerProvider.notifier)
+          .send('hi');
+      await Future<void>.delayed(
+        const Duration(milliseconds: 10),
+      ); // before any token
+      await container.read(chatControllerProvider.notifier).stop();
+      await sending;
 
-    final conversationId = container.read(chatControllerProvider).conversationId!;
-    final assistant =
-        (await repo().loadTurns(conversationId)).firstWhere((m) => m.role == MessageRole.assistant);
-    expect(assistant.status, MessageStatus.stoppedPartial);
-    expect(assistant.content, isEmpty);
-  });
+      final conversationId = container
+          .read(chatControllerProvider)
+          .conversationId!;
+      final assistant = (await repo().loadTurns(
+        conversationId,
+      )).firstWhere((m) => m.role == MessageRole.assistant);
+      expect(assistant.status, MessageStatus.stoppedPartial);
+      expect(assistant.content, isEmpty);
+    },
+  );
 }

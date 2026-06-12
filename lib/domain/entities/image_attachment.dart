@@ -19,7 +19,9 @@ class ImageAttachment {
 
   @override
   bool operator ==(Object other) =>
-      other is ImageAttachment && other.path == path && other.mimeType == mimeType;
+      other is ImageAttachment &&
+      other.path == path &&
+      other.mimeType == mimeType;
 
   @override
   int get hashCode => Object.hash(path, mimeType);

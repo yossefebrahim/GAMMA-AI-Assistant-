@@ -9,7 +9,7 @@ import 'package:ai_assistant/domain/entities/tool_spec.dart';
 import 'package:ai_assistant/domain/services/gemma_service.dart';
 
 /// In-memory [GemmaService] for unit tests (contract: gemma_service.md "Test double" + the 003
-/// audio and 004 function-calling extensions).
+/// audio and 004 function-calling extensions and 005 memory extensions).
 ///
 /// Emits a scripted sequence of [GenerationEvent]s with controllable timing, honors [stop] by
 /// ending the stream early (FR-014), records the image/audio/history media passed to [generate]
@@ -19,10 +19,12 @@ import 'package:ai_assistant/domain/services/gemma_service.dart';
 /// It models the seam's gates FOR REAL: `generate(audio:)` while `capabilities.audio` is false
 /// throws [StateError] (003 guarantee 13), both media throws [StateError] (guarantee 14),
 /// `loadModel(tools:)` while `!capabilities.functionCalling` throws [StateError] (004 guarantee
-/// 18), and `resumeWithToolResult` outside an in-flight tool turn throws [StateError] (guarantee
-/// 22).
+/// 18), `resumeWithToolResult` outside an in-flight tool turn throws [StateError] (guarantee 22),
+/// and `startSession()` before `loadModel` throws [StateError] (005 guarantee 27).
 class FakeGemmaService implements GemmaService {
-  FakeGemmaService({this.capabilitiesData = const ModelCapabilities(image: true, audio: true)});
+  FakeGemmaService({
+    this.capabilitiesData = const ModelCapabilities(image: true, audio: true),
+  });
 
   /// Capabilities returned once loaded. Default mirrors 002/003 (image+audio true); pass a value
   /// with `functionCalling: true` for tool tests, or `ModelCapabilities.textOnly` for gating tests.
@@ -60,6 +62,19 @@ class FakeGemmaService implements GemmaService {
   /// The tool specs passed to the last [loadModel] (004 — the gating test asserts empty vs. full).
   List<ToolSpec>? loadedTools;
 
+  /// 005: the [systemInstruction] passed to the last [loadModel] call.
+  /// Null means the call was made with no instruction (byte-parity case, guarantee 29).
+  String? loadedSystemInstruction;
+
+  /// 005: the [systemInstruction] passed to the last [startSession] call.
+  /// Null either means [startSession] has not been called yet, or it was called with null.
+  /// Use [startSessionCount] to distinguish the two.
+  String? lastStartSessionInstruction;
+
+  /// 005: how many times [startSession] has been called (allows asserting a null-instruction call
+  /// vs no call at all).
+  int startSessionCount = 0;
+
   List<ChatTurn>? lastHistory;
   String? lastPrompt;
   ImageInput? lastImage;
@@ -87,7 +102,9 @@ class FakeGemmaService implements GemmaService {
 
   @override
   ModelCapabilities get capabilities {
-    if (!_loaded) throw StateError('capabilities read before a model was loaded');
+    if (!_loaded) {
+      throw StateError('capabilities read before a model was loaded');
+    }
     return capabilitiesData;
   }
 
@@ -96,6 +113,7 @@ class FakeGemmaService implements GemmaService {
     String filePath, {
     ModelCapabilities? capabilities,
     List<ToolSpec> tools = const [],
+    String? systemInstruction,
   }) async {
     if (throwOnLoad) {
       throw const ModelLoadException('fake load failure');
@@ -103,15 +121,30 @@ class FakeGemmaService implements GemmaService {
     final caps = capabilities ?? capabilitiesData;
     // Guarantee 18 (004): tool declarations without the capability are unrepresentable.
     if (tools.isNotEmpty && !caps.functionCalling) {
-      throw StateError('loadModel(tools:) requires capabilities.functionCalling');
+      throw StateError(
+        'loadModel(tools:) requires capabilities.functionCalling',
+      );
     }
     loadedPath = filePath;
     loadedCapabilities = capabilities;
     loadedTools = tools;
+    loadedSystemInstruction = systemInstruction;
     if (capabilities != null) capabilitiesData = capabilities;
     loadCount++;
     _loaded = true;
     _closed = false;
+  }
+
+  @override
+  Future<void> startSession({String? systemInstruction}) async {
+    // Guarantee 27 (005): startSession before load is a programmer error.
+    if (!_loaded) {
+      throw StateError('startSession() called before a model was loaded');
+    }
+    lastStartSessionInstruction = systemInstruction;
+    startSessionCount++;
+    // Reset tool-turn gate so the next generate starts clean (mirrors the seam's epoch bump).
+    _awaitingToolResult = false;
   }
 
   @override
@@ -128,15 +161,23 @@ class FakeGemmaService implements GemmaService {
       throw StateError('generate() called with both an image and audio');
     }
     if (audio != null && !capabilitiesData.audio) {
-      throw StateError('generate(audio:) called while the model does not support audio');
+      throw StateError(
+        'generate(audio:) called while the model does not support audio',
+      );
     }
     lastHistory = List<ChatTurn>.unmodifiable(history);
-    lastHistoryImages = List<ImageInput?>.unmodifiable(history.map((turn) => turn.image));
-    lastHistoryAudio = List<AudioInput?>.unmodifiable(history.map((turn) => turn.audio));
+    lastHistoryImages = List<ImageInput?>.unmodifiable(
+      history.map((turn) => turn.image),
+    );
+    lastHistoryAudio = List<AudioInput?>.unmodifiable(
+      history.map((turn) => turn.audio),
+    );
     lastPrompt = prompt;
     lastImage = image;
     lastAudio = audio;
-    return _emit(scriptedEvents ?? [for (final d in scriptedDeltas) TextDelta(d)]);
+    return _emit(
+      scriptedEvents ?? [for (final d in scriptedDeltas) TextDelta(d)],
+    );
   }
 
   @override
@@ -149,7 +190,9 @@ class FakeGemmaService implements GemmaService {
     }
     // Guarantee 22: resume is valid only after a tool-call-terminated stream of the same turn.
     if (!_awaitingToolResult) {
-      throw StateError('resumeWithToolResult() called outside an in-flight tool turn');
+      throw StateError(
+        'resumeWithToolResult() called outside an in-flight tool turn',
+      );
     }
     _awaitingToolResult = false;
     resumeCount++;
@@ -165,12 +208,16 @@ class FakeGemmaService implements GemmaService {
 
     Future<void> pump() async {
       if (throwImageProcessing) {
-        controller.addError(const ImageProcessingException('fake image processing failure'));
+        controller.addError(
+          const ImageProcessingException('fake image processing failure'),
+        );
         if (!controller.isClosed) await controller.close();
         return;
       }
       if (throwAudioProcessing) {
-        controller.addError(const AudioProcessingException('fake audio processing failure'));
+        controller.addError(
+          const AudioProcessingException('fake audio processing failure'),
+        );
         if (!controller.isClosed) await controller.close();
         return;
       }

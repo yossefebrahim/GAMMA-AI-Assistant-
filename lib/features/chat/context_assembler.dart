@@ -28,6 +28,14 @@ class ContextAssembler {
   /// the budget when function calling is active so a long history can't crowd it out.
   static const int toolInstructionTokens = 40;
 
+  /// Estimated worst-case cost of the facts block (~225 tokens — R4: ≤20 facts × ~8.7 tok/fact,
+  /// block capped at ≤900 chars). Reserved when memory is enabled AND ≥1 fact is injected.
+  static const int memoryBlockTokens = 225;
+
+  /// Estimated cost of the memory capture instruction (~86 tokens — R5: measured on the A34 via
+  /// native `sizeInTokens`). Reserved when function calling AND memory are both active.
+  static const int memoryCaptureTokens = 86;
+
   final int maxContextTokens;
 
   /// Assemble the context from [priorMessages] — the conversation's turns BEFORE the current
@@ -36,24 +44,35 @@ class ContextAssembler {
   /// A media-bearing prior turn carries its image/clip forward (FR-015/FR-016; 003 FR-016/FR-017):
   /// [images]/[audio] map a message id to the just-in-time bytes. A tool turn replays as
   /// `ChatTurn.tool`. When [reserveToolInstruction] is true (the model supports function calling),
-  /// [toolInstructionTokens] are subtracted from the budget (R6). The assembler stays pure (no
-  /// file I/O) — bytes are injected.
+  /// [toolInstructionTokens] are subtracted from the budget (R6).
+  ///
+  /// When [reserveMemoryBlock] is true (memory is enabled AND ≥1 fact is injected), [memoryBlockTokens]
+  /// (~225) are subtracted from the budget so the facts block can never be crowded out by history.
+  /// When [reserveMemoryCaptureInstruction] is true (function calling AND memory are both active),
+  /// [memoryCaptureTokens] (~86) are additionally subtracted (R3/R4). Both default to false (memory
+  /// off or empty → zero cost, byte-parity with 003/004).
+  ///
+  /// The assembler stays pure (no file I/O) — bytes are injected.
   List<ChatTurn> assemble(
     List<Message> priorMessages, {
     Map<int, ImageInput> images = const <int, ImageInput>{},
     Map<int, AudioInput> audio = const <int, AudioInput>{},
     bool reserveToolInstruction = false,
+    bool reserveMemoryBlock = false,
+    bool reserveMemoryCaptureInstruction = false,
   }) {
     final turns = <ChatTurn>[];
     for (final message in priorMessages) {
       if (message.role == MessageRole.tool) {
         // A tool turn replays as the plugin's call+response pair; error/skipped rows carry their
         // `{error: …}` result so the model remembers failures honestly (data-model §3).
-        turns.add(ChatTurn.tool(
-          name: message.toolName ?? '',
-          args: message.toolArgs ?? const <String, Object?>{},
-          result: message.toolResult ?? const <String, Object?>{},
-        ));
+        turns.add(
+          ChatTurn.tool(
+            name: message.toolName ?? '',
+            args: message.toolArgs ?? const <String, Object?>{},
+            result: message.toolResult ?? const <String, Object?>{},
+          ),
+        );
         continue;
       }
       // Skip an empty assistant placeholder (still streaming, no text yet). User turns are kept
@@ -61,17 +80,25 @@ class ContextAssembler {
       if (message.role == MessageRole.assistant && message.content.isEmpty) {
         continue;
       }
-      turns.add(ChatTurn(
-        isUser: message.isUser,
-        text: message.content,
-        image: images[message.id],
-        audio: audio[message.id],
-      ));
+      turns.add(
+        ChatTurn(
+          isUser: message.isUser,
+          text: message.content,
+          image: images[message.id],
+          audio: audio[message.id],
+        ),
+      );
     }
 
     final budget =
-        maxContextTokens - (reserveToolInstruction ? toolInstructionTokens : 0);
-    var totalTokens = turns.fold<int>(0, (sum, turn) => sum + _estimateTurnTokens(turn));
+        maxContextTokens -
+        (reserveToolInstruction ? toolInstructionTokens : 0) -
+        (reserveMemoryBlock ? memoryBlockTokens : 0) -
+        (reserveMemoryCaptureInstruction ? memoryCaptureTokens : 0);
+    var totalTokens = turns.fold<int>(
+      0,
+      (sum, turn) => sum + _estimateTurnTokens(turn),
+    );
     var start = 0;
     // Drop oldest turns until the window fits (sliding window, Q2).
     while (start < turns.length && totalTokens > budget) {
@@ -85,7 +112,8 @@ class ContextAssembler {
   /// everything else costs its text.
   int _estimateTurnTokens(ChatTurn turn) {
     if (turn.isTool) {
-      final payload = (turn.toolName ?? '') +
+      final payload =
+          (turn.toolName ?? '') +
           jsonEncode(turn.toolArgs ?? const <String, Object?>{}) +
           jsonEncode(turn.toolResult ?? const <String, Object?>{});
       return _estimateTokens(payload);

@@ -19,7 +19,9 @@ class PendingAttachment {
 
   @override
   bool operator ==(Object other) =>
-      other is PendingAttachment && other.path == path && other.mimeType == mimeType;
+      other is PendingAttachment &&
+      other.path == path &&
+      other.mimeType == mimeType;
 
   @override
   int get hashCode => Object.hash(path, mimeType);
@@ -76,10 +78,12 @@ class AttachmentController extends Notifier<AttachmentState> {
       'image removed — this model does not accept images';
 
   /// Surfaced when a picked image is too large / unusable, so the user can pick another (FR-021).
-  static const String pickAnotherError = "that image can't be used — pick another";
+  static const String pickAnotherError =
+      "that image can't be used — pick another";
 
   /// One attachment per message (003 spec Q3): attaching an image replaces a pending voice clip.
-  static const String clipReplacedNote = 'one attachment per message — voice clip removed';
+  static const String clipReplacedNote =
+      'one attachment per message — voice clip removed';
 
   @override
   AttachmentState build() {
@@ -107,7 +111,8 @@ class AttachmentController extends Notifier<AttachmentState> {
   }
 
   MediaPickerService get _picker => ref.read(mediaPickerServiceProvider);
-  MediaPermissionService get _permission => ref.read(mediaPermissionServiceProvider);
+  MediaPermissionService get _permission =>
+      ref.read(mediaPermissionServiceProvider);
 
   /// Pick from the photo library (permissionless Photo Picker on modern Android, R3). A returned
   /// image becomes the pending attachment (replacing any existing one); a cancel leaves state as-is.
@@ -117,7 +122,9 @@ class AttachmentController extends Notifier<AttachmentState> {
       final picked = await _picker.pickFromLibrary();
       _setPending(picked);
     } on MediaAccessException {
-      state = state.copyWith(permissionPrompt: AttachmentPrompt.permissionDenied);
+      state = state.copyWith(
+        permissionPrompt: AttachmentPrompt.permissionDenied,
+      );
     }
   }
 
@@ -136,13 +143,19 @@ class AttachmentController extends Notifier<AttachmentState> {
           await _capture();
         } else if (result == MediaPermissionStatus.permanentlyDenied ||
             result == MediaPermissionStatus.restricted) {
-          state = state.copyWith(permissionPrompt: AttachmentPrompt.permissionPermanentlyDenied);
+          state = state.copyWith(
+            permissionPrompt: AttachmentPrompt.permissionPermanentlyDenied,
+          );
         } else {
-          state = state.copyWith(permissionPrompt: AttachmentPrompt.permissionDenied);
+          state = state.copyWith(
+            permissionPrompt: AttachmentPrompt.permissionDenied,
+          );
         }
       case MediaPermissionStatus.permanentlyDenied:
       case MediaPermissionStatus.restricted:
-        state = state.copyWith(permissionPrompt: AttachmentPrompt.permissionPermanentlyDenied);
+        state = state.copyWith(
+          permissionPrompt: AttachmentPrompt.permissionPermanentlyDenied,
+        );
     }
   }
 
@@ -151,12 +164,16 @@ class AttachmentController extends Notifier<AttachmentState> {
       final picked = await _picker.pickFromCamera();
       _setPending(picked);
     } on MediaAccessException {
-      state = state.copyWith(permissionPrompt: AttachmentPrompt.permissionDenied);
+      state = state.copyWith(
+        permissionPrompt: AttachmentPrompt.permissionDenied,
+      );
     }
   }
 
   void _setPending(PickedImage? picked) {
-    if (picked == null) return; // cancel — leave the prior state untouched (FR-003 / edge: cancel)
+    if (picked == null) {
+      return; // cancel — leave the prior state untouched (FR-003 / edge: cancel)
+    }
     // One attachment per message (003 spec Q3): attaching an image discards a pending/in-progress
     // voice clip (the recording controller deletes its temp file and stops any preview) and the
     // one-attachment note rides with the surviving image.
@@ -173,7 +190,8 @@ class AttachmentController extends Notifier<AttachmentState> {
 
   /// Reject the pending image and prompt for another (FR-021) — called when the image store rejects
   /// an oversized/unreadable file at send time. Keeps text chat usable.
-  void rejectPending() => state = const AttachmentState(error: pickAnotherError);
+  void rejectPending() =>
+      state = const AttachmentState(error: pickAnotherError);
 
   /// Open the OS app-settings page so the user can grant a permanently-denied permission (FR-010).
   Future<void> openSettings() async {
@@ -182,8 +200,10 @@ class AttachmentController extends Notifier<AttachmentState> {
 
   /// Dismiss the permission explainer (FR-011) — leaves any pending image and keeps text chat
   /// fully usable.
-  void dismissPrompt() =>
-      state = state.copyWith(permissionPrompt: AttachmentPrompt.none, clearNote: true);
+  void dismissPrompt() => state = state.copyWith(
+    permissionPrompt: AttachmentPrompt.none,
+    clearNote: true,
+  );
 
   /// Remove the pending attachment (FR-003).
   void remove() => state = const AttachmentState();
@@ -193,4 +213,6 @@ class AttachmentController extends Notifier<AttachmentState> {
 }
 
 final attachmentControllerProvider =
-    NotifierProvider<AttachmentController, AttachmentState>(AttachmentController.new);
+    NotifierProvider<AttachmentController, AttachmentState>(
+      AttachmentController.new,
+    );

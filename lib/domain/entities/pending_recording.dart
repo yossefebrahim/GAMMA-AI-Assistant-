@@ -5,7 +5,11 @@ import 'package:meta/meta.dart';
 /// into app-private storage via `AudioFileStore.persist` only at send.
 @immutable
 class PendingRecording {
-  const PendingRecording({required this.path, this.mimeType, required this.durationMs});
+  const PendingRecording({
+    required this.path,
+    this.mimeType,
+    required this.durationMs,
+  });
 
   /// The recorder temp file (app cache).
   final String path;

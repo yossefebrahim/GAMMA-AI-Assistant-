@@ -13,18 +13,18 @@ class PreflightBlockedScreen extends StatelessWidget {
   final IneligibleReason reason;
 
   String get _headline => switch (reason) {
-        IneligibleReason.insufficientMemory => 'not enough memory',
-        IneligibleReason.unsupportedAbi => 'unsupported processor',
-      };
+    IneligibleReason.insufficientMemory => 'not enough memory',
+    IneligibleReason.unsupportedAbi => 'unsupported processor',
+  };
 
   String get _detail => switch (reason) {
-        IneligibleReason.insufficientMemory =>
-          'gemma 4 e2b needs about 8 gb of ram to run on-device. this device reports less, so the '
-              'model would run out of memory. the download will not start.',
-        IneligibleReason.unsupportedAbi =>
-          'the model requires a 64-bit arm processor (arm64-v8a). this device uses a different '
-              'architecture, so the model cannot run here. the download will not start.',
-      };
+    IneligibleReason.insufficientMemory =>
+      'gemma 4 e2b needs about 8 gb of ram to run on-device. this device reports less, so the '
+          'model would run out of memory. the download will not start.',
+    IneligibleReason.unsupportedAbi =>
+      'the model requires a 64-bit arm processor (arm64-v8a). this device uses a different '
+          'architecture, so the model cannot run here. the download will not start.',
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -40,14 +40,18 @@ class PreflightBlockedScreen extends StatelessWidget {
             children: [
               Text(
                 AppText.spec('device not supported'),
-                style: theme.textTheme.labelSmall?.copyWith(color: colors.accent),
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: colors.accent,
+                ),
               ),
               const SizedBox(height: AppSpacing.s12),
               Text(_headline, style: theme.textTheme.titleLarge),
               const SizedBox(height: AppSpacing.s16),
               Text(
                 _detail,
-                style: theme.textTheme.bodyLarge?.copyWith(color: colors.textSecondary),
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: colors.textSecondary,
+                ),
               ),
             ],
           ),

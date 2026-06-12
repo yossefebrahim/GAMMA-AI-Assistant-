@@ -25,10 +25,10 @@ class AudioChip extends StatelessWidget {
   }) : path = null;
 
   const AudioChip.history({super.key, required String this.path})
-      : durationMs = null,
-        isPlaying = false,
-        onTogglePlay = null,
-        onRemove = null;
+    : durationMs = null,
+      isPlaying = false,
+      onTogglePlay = null,
+      onRemove = null;
 
   static const Key playKey = Key('audio-chip-play');
   static const Key removeKey = Key('audio-chip-remove');
@@ -59,7 +59,10 @@ class AudioChip extends StatelessWidget {
       builder: (context, snapshot) {
         if (snapshot.hasError) return _brokenChip(context);
         if (!snapshot.hasData) return _chipRow(context, null);
-        return _chipRow(context, AudioConstants.durationFromBytes(snapshot.data!));
+        return _chipRow(
+          context,
+          AudioConstants.durationFromBytes(snapshot.data!),
+        );
       },
     );
   }
@@ -67,10 +70,14 @@ class AudioChip extends StatelessWidget {
   Widget _chipRow(BuildContext context, Duration? duration) {
     final theme = Theme.of(context);
     final colors = theme.extension<AppColors>()!;
-    final label = duration == null ? '–:––' : AudioConstants.formatDuration(duration);
+    final label = duration == null
+        ? '–:––'
+        : AudioConstants.formatDuration(duration);
     final chip = Container(
       padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.s12, vertical: AppSpacing.s4),
+        horizontal: AppSpacing.s12,
+        vertical: AppSpacing.s4,
+      ),
       decoration: BoxDecoration(
         color: colors.surfaceContainerHigh,
         borderRadius: BorderRadius.circular(AppSpacing.radiusControl),
@@ -92,13 +99,19 @@ class AudioChip extends StatelessWidget {
           else
             Padding(
               padding: const EdgeInsets.symmetric(vertical: AppSpacing.s8),
-              child: Icon(Icons.graphic_eq, color: colors.textSecondary, size: AppSpacing.s24),
+              child: Icon(
+                Icons.graphic_eq,
+                color: colors.textSecondary,
+                size: AppSpacing.s24,
+              ),
             ),
           const SizedBox(width: AppSpacing.s4),
           Text(
             AppText.spec(label),
             key: AudioChip.durationKey,
-            style: theme.textTheme.labelSmall?.copyWith(color: colors.textPrimary),
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: colors.textPrimary,
+            ),
           ),
           const SizedBox(width: AppSpacing.s4),
         ],
@@ -130,8 +143,10 @@ class AudioChip extends StatelessWidget {
     final colors = theme.extension<AppColors>()!;
     return Container(
       key: AudioChip.brokenKey,
-      padding:
-          const EdgeInsets.symmetric(horizontal: AppSpacing.s12, vertical: AppSpacing.s8),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.s12,
+        vertical: AppSpacing.s8,
+      ),
       decoration: BoxDecoration(
         color: colors.surfaceContainerHigh,
         borderRadius: BorderRadius.circular(AppSpacing.radiusControl),
@@ -140,11 +155,17 @@ class AudioChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.volume_off_outlined, color: colors.textSecondary, size: AppSpacing.s24),
+          Icon(
+            Icons.volume_off_outlined,
+            color: colors.textSecondary,
+            size: AppSpacing.s24,
+          ),
           const SizedBox(width: AppSpacing.s8),
           Text(
             'audio unavailable',
-            style: theme.textTheme.bodyMedium?.copyWith(color: colors.textSecondary),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: colors.textSecondary,
+            ),
           ),
         ],
       ),

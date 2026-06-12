@@ -14,9 +14,12 @@ void main() {
   setUp(() => container = makeContainer());
   tearDown(() => container.dispose());
 
-  ConversationRepository repo() => container.read(conversationRepositoryProvider);
-  HistoryController history() => container.read(historyControllerProvider.notifier);
-  int? openConversationId() => container.read(chatControllerProvider).conversationId;
+  ConversationRepository repo() =>
+      container.read(conversationRepositoryProvider);
+  HistoryController history() =>
+      container.read(historyControllerProvider.notifier);
+  int? openConversationId() =>
+      container.read(chatControllerProvider).conversationId;
 
   test('newConversation resets the chat to a fresh, empty thread (FR-019)', () {
     container.read(chatControllerProvider.notifier).openConversation(99);
@@ -24,33 +27,38 @@ void main() {
     expect(openConversationId(), isNull);
   });
 
-  test('openConversation switches the chat to the selected conversation (FR-020)', () async {
-    final a = await repo().createConversation();
-    await repo().appendUserMessage(a.id, 'hello from a');
-    final b = await repo().createConversation();
-    await repo().appendUserMessage(b.id, 'hello from b');
+  test(
+    'openConversation switches the chat to the selected conversation (FR-020)',
+    () async {
+      final a = await repo().createConversation();
+      await repo().appendUserMessage(a.id, 'hello from a');
+      final b = await repo().createConversation();
+      await repo().appendUserMessage(b.id, 'hello from b');
 
-    history().openConversation(a.id);
-    expect(openConversationId(), a.id);
-    expect((await repo().loadTurns(a.id)).first.content, 'hello from a');
+      history().openConversation(a.id);
+      expect(openConversationId(), a.id);
+      expect((await repo().loadTurns(a.id)).first.content, 'hello from a');
 
-    history().openConversation(b.id);
-    expect(openConversationId(), b.id);
-  });
+      history().openConversation(b.id);
+      expect(openConversationId(), b.id);
+    },
+  );
 
-  test('deleteConversation removes it, cascades messages, and resets the open chat (FR-022)',
-      () async {
-    final a = await repo().createConversation();
-    await repo().appendUserMessage(a.id, 'doomed');
-    history().openConversation(a.id);
-    expect(openConversationId(), a.id);
+  test(
+    'deleteConversation removes it, cascades messages, and resets the open chat (FR-022)',
+    () async {
+      final a = await repo().createConversation();
+      await repo().appendUserMessage(a.id, 'doomed');
+      history().openConversation(a.id);
+      expect(openConversationId(), a.id);
 
-    await history().deleteConversation(a.id);
+      await history().deleteConversation(a.id);
 
-    final remaining = await repo().watchConversations().first;
-    expect(remaining.where((c) => c.id == a.id), isEmpty);
-    expect(await repo().loadTurns(a.id), isEmpty);
-    // The chat was pointed at the deleted conversation → reset to a fresh thread.
-    expect(openConversationId(), isNull);
-  });
+      final remaining = await repo().watchConversations().first;
+      expect(remaining.where((c) => c.id == a.id), isEmpty);
+      expect(await repo().loadTurns(a.id), isEmpty);
+      // The chat was pointed at the deleted conversation → reset to a fresh thread.
+      expect(openConversationId(), isNull);
+    },
+  );
 }

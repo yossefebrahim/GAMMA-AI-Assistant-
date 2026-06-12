@@ -17,13 +17,16 @@ void main() {
     return out.toString();
   }
 
-  test('pure-JSON call turn: everything withheld then discarded (nothing emitted)', () {
-    final f = LeakFilter();
-    final emitted = emit(f, [leak]);
-    expect(emitted, isEmpty);
-    expect(f.isWithholding, isTrue);
-    f.discardOnToolCall();
-  });
+  test(
+    'pure-JSON call turn: everything withheld then discarded (nothing emitted)',
+    () {
+      final f = LeakFilter();
+      final emitted = emit(f, [leak]);
+      expect(emitted, isEmpty);
+      expect(f.isWithholding, isTrue);
+      f.discardOnToolCall();
+    },
+  );
 
   test('prose-only turn: all flushed, nothing withheld', () {
     final f = LeakFilter();
@@ -32,38 +35,54 @@ void main() {
     expect(f.flushOnText(), isEmpty);
   });
 
-  test('prose-then-leak-then-call: prose emitted, trailing JSON discarded (the key case)', () {
-    final f = LeakFilter();
-    final emitted = emit(f, ['let me check. ', leak]);
-    expect(emitted, 'let me check. ');
-    f.discardOnToolCall(); // turn ended in a tool call → withheld leak dropped
-  });
+  test(
+    'prose-then-leak-then-call: prose emitted, trailing JSON discarded (the key case)',
+    () {
+      final f = LeakFilter();
+      final emitted = emit(f, ['let me check. ', leak]);
+      expect(emitted, 'let me check. ');
+      f.discardOnToolCall(); // turn ended in a tool call → withheld leak dropped
+    },
+  );
 
-  test('{-prefix false-positive prose: withheld then FLUSHED verbatim at a text-terminated turn', () {
-    final f = LeakFilter();
-    // A legitimate reply that happens to start with "{" but never becomes a call.
-    final emitted = emit(f, ['{not actually json} ', 'here is your answer.']);
-    expect(emitted, isEmpty, reason: 'withheld from the {-chunk onward');
-    expect(f.flushOnText(), '{not actually json} here is your answer.');
-  });
+  test(
+    '{-prefix false-positive prose: withheld then FLUSHED verbatim at a text-terminated turn',
+    () {
+      final f = LeakFilter();
+      // A legitimate reply that happens to start with "{" but never becomes a call.
+      final emitted = emit(f, ['{not actually json} ', 'here is your answer.']);
+      expect(emitted, isEmpty, reason: 'withheld from the {-chunk onward');
+      expect(f.flushOnText(), '{not actually json} here is your answer.');
+    },
+  );
 
   test('chunk-split JSON: leak spanning multiple chunks is fully withheld', () {
     final f = LeakFilter();
-    final emitted = emit(f, ['{"role":"assistant",', '"tool_calls":[', '{"function":{}}]}']);
+    final emitted = emit(f, [
+      '{"role":"assistant",',
+      '"tool_calls":[',
+      '{"function":{}}]}',
+    ]);
     expect(emitted, isEmpty);
     f.discardOnToolCall();
   });
 
-  test('leading whitespace before the brace is still detected as a leak start', () {
-    final f = LeakFilter();
-    final emitted = emit(f, ['   $leak']);
-    expect(emitted, isEmpty);
-  });
+  test(
+    'leading whitespace before the brace is still detected as a leak start',
+    () {
+      final f = LeakFilter();
+      final emitted = emit(f, ['   $leak']);
+      expect(emitted, isEmpty);
+    },
+  );
 
-  test('inactive filter (flag off) is a pass-through — byte parity (guarantee 19)', () {
-    final f = LeakFilter(active: false);
-    final emitted = emit(f, [leak, ' and more']);
-    expect(emitted, '$leak and more');
-    expect(f.isWithholding, isFalse);
-  });
+  test(
+    'inactive filter (flag off) is a pass-through — byte parity (guarantee 19)',
+    () {
+      final f = LeakFilter(active: false);
+      final emitted = emit(f, [leak, ' and more']);
+      expect(emitted, '$leak and more');
+      expect(f.isWithholding, isFalse);
+    },
+  );
 }

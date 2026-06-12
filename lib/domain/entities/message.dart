@@ -150,8 +150,21 @@ class Message {
       _mapEquals(other.toolResult, toolResult);
 
   @override
-  int get hashCode => Object.hash(id, conversationId, role, content, sequence, createdAt, status,
-      image, audio, toolName, toolStatus, _mapHash(toolArgs), _mapHash(toolResult));
+  int get hashCode => Object.hash(
+    id,
+    conversationId,
+    role,
+    content,
+    sequence,
+    createdAt,
+    status,
+    image,
+    audio,
+    toolName,
+    toolStatus,
+    _mapHash(toolArgs),
+    _mapHash(toolResult),
+  );
 }
 
 bool _mapEquals(Map<String, Object?>? a, Map<String, Object?>? b) {

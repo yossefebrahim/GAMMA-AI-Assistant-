@@ -13,29 +13,35 @@ class ModelInstallRepository {
   final AppDatabase _db;
 
   ModelInstall _toEntity(ModelInstallRow row) => ModelInstall(
-        id: row.id,
-        state: ModelInstallState.values.byName(row.state),
-        filePath: row.filePath,
-        sizeBytes: row.sizeBytes,
-        installedAt: row.installedAt,
-      );
+    id: row.id,
+    state: ModelInstallState.values.byName(row.state),
+    filePath: row.filePath,
+    sizeBytes: row.sizeBytes,
+    installedAt: row.installedAt,
+  );
 
   Future<ModelInstall?> read() async {
-    final row = await (_db.select(_db.modelInstalls)
-          ..where((t) => t.id.equals(ModelCatalog.modelId)))
-        .getSingleOrNull();
+    final row = await (_db.select(
+      _db.modelInstalls,
+    )..where((t) => t.id.equals(ModelCatalog.modelId))).getSingleOrNull();
     return row == null ? null : _toEntity(row);
   }
 
   Stream<ModelInstall?> watch() {
-    return (_db.select(_db.modelInstalls)..where((t) => t.id.equals(ModelCatalog.modelId)))
+    return (_db.select(_db.modelInstalls)
+          ..where((t) => t.id.equals(ModelCatalog.modelId)))
         .watchSingleOrNull()
         .map((row) => row == null ? null : _toEntity(row));
   }
 
   /// Record a verified, installed model (after the atomic `.part` → final rename, FR-011).
-  Future<void> markInstalled({required String filePath, required int sizeBytes}) async {
-    await _db.into(_db.modelInstalls).insertOnConflictUpdate(
+  Future<void> markInstalled({
+    required String filePath,
+    required int sizeBytes,
+  }) async {
+    await _db
+        .into(_db.modelInstalls)
+        .insertOnConflictUpdate(
           ModelInstallsCompanion.insert(
             id: ModelCatalog.modelId,
             state: ModelInstallState.installed.name,
@@ -48,7 +54,9 @@ class ModelInstallRepository {
 
   /// Reset to not-installed (on delete/cancel, FR-030).
   Future<void> markNotInstalled() async {
-    await _db.into(_db.modelInstalls).insertOnConflictUpdate(
+    await _db
+        .into(_db.modelInstalls)
+        .insertOnConflictUpdate(
           ModelInstallsCompanion.insert(
             id: ModelCatalog.modelId,
             state: ModelInstallState.notInstalled.name,

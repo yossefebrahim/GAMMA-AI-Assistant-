@@ -28,7 +28,9 @@ void main() {
     container = makeContainer(
       overrides: [
         mediaPickerServiceProvider.overrideWithValue(picker),
-        modelCapabilitiesProvider.overrideWith((ref) => const ModelCapabilities(image: true)),
+        modelCapabilitiesProvider.overrideWith(
+          (ref) => const ModelCapabilities(image: true),
+        ),
         imageFileStoreProvider.overrideWithValue(
           ImageFileStore(documentsDirectory: () async => Directory.systemTemp),
         ),
@@ -39,23 +41,27 @@ void main() {
   tearDown(() => container.dispose());
 
   Widget app() => UncontrolledProviderScope(
-        container: container,
-        child: MaterialApp(
-          theme: AppTheme.light,
-          darkTheme: AppTheme.dark,
-          themeMode: ThemeMode.dark,
-          home: const Scaffold(body: Composer()),
-        ),
-      );
+    container: container,
+    child: MaterialApp(
+      theme: AppTheme.light,
+      darkTheme: AppTheme.dark,
+      themeMode: ThemeMode.dark,
+      home: const Scaffold(body: Composer()),
+    ),
+  );
 
-  testWidgets('attach control shows when the model supports images (FR-005)', (tester) async {
+  testWidgets('attach control shows when the model supports images (FR-005)', (
+    tester,
+  ) async {
     await tester.pumpWidget(app());
     await tester.pump();
 
     expect(find.byKey(Composer.attachKey), findsOneWidget);
   });
 
-  testWidgets('tapping attach offers camera and photo library (FR-001)', (tester) async {
+  testWidgets('tapping attach offers camera and photo library (FR-001)', (
+    tester,
+  ) async {
     await tester.pumpWidget(app());
     await tester.pump();
 
@@ -66,29 +72,42 @@ void main() {
     expect(find.byKey(Composer.libraryOptionKey), findsOneWidget);
   });
 
-  testWidgets('a pending image previews with a remove control and enables send with no text '
-      '(FR-002/FR-004)', (tester) async {
-    picker.libraryResult = const PickedImage(path: '/tmp/fake-preview.jpg');
-    await tester.pumpWidget(app());
-    await tester.pump();
+  testWidgets(
+    'a pending image previews with a remove control and enables send with no text '
+    '(FR-002/FR-004)',
+    (tester) async {
+      picker.libraryResult = const PickedImage(path: '/tmp/fake-preview.jpg');
+      await tester.pumpWidget(app());
+      await tester.pump();
 
-    // Send is disabled with neither text nor image.
-    expect(tester.widget<IconButton>(find.byKey(Composer.sendKey)).onPressed, isNull);
+      // Send is disabled with neither text nor image.
+      expect(
+        tester.widget<IconButton>(find.byKey(Composer.sendKey)).onPressed,
+        isNull,
+      );
 
-    await container.read(attachmentControllerProvider.notifier).pickFromLibrary();
-    await tester.pump();
+      await container
+          .read(attachmentControllerProvider.notifier)
+          .pickFromLibrary();
+      await tester.pump();
 
-    expect(find.byType(AttachmentPreview), findsOneWidget);
-    expect(find.byKey(AttachmentPreview.removeKey), findsOneWidget);
-    // Send is now enabled by the image alone (no text).
-    expect(tester.widget<IconButton>(find.byKey(Composer.sendKey)).onPressed, isNotNull);
-  });
+      expect(find.byType(AttachmentPreview), findsOneWidget);
+      expect(find.byKey(AttachmentPreview.removeKey), findsOneWidget);
+      // Send is now enabled by the image alone (no text).
+      expect(
+        tester.widget<IconButton>(find.byKey(Composer.sendKey)).onPressed,
+        isNotNull,
+      );
+    },
+  );
 
   testWidgets('the remove control clears the preview (FR-003)', (tester) async {
     picker.libraryResult = const PickedImage(path: '/tmp/fake-preview.jpg');
     await tester.pumpWidget(app());
     await tester.pump();
-    await container.read(attachmentControllerProvider.notifier).pickFromLibrary();
+    await container
+        .read(attachmentControllerProvider.notifier)
+        .pickFromLibrary();
     await tester.pump();
 
     await tester.tap(find.byKey(AttachmentPreview.removeKey));

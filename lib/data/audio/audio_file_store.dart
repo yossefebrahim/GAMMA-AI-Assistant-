@@ -16,7 +16,8 @@ import 'package:path_provider/path_provider.dart';
 /// device (`AudioFileStore(documentsDirectory: () async => Directory(tmp))`).
 class AudioFileStore {
   AudioFileStore({Future<Directory> Function()? documentsDirectory})
-      : _documentsDirectory = documentsDirectory ?? getApplicationDocumentsDirectory;
+    : _documentsDirectory =
+          documentsDirectory ?? getApplicationDocumentsDirectory;
 
   final Future<Directory> Function() _documentsDirectory;
 
@@ -58,7 +59,11 @@ class AudioFileStore {
       );
     }
     final dir = await _audioDir();
-    final ext = mediaFileExtension(mimeType: mimeType, path: tempPath, fallback: '.wav');
+    final ext = mediaFileExtension(
+      mimeType: mimeType,
+      path: tempPath,
+      fallback: '.wav',
+    );
     final name = '${DateTime.now().microsecondsSinceEpoch}_${_counter++}$ext';
     final dest = '${dir.path}/$name';
     await source.copy(dest);
@@ -67,7 +72,8 @@ class AudioFileStore {
 
   /// Read the bytes of a stored clip just-in-time for `generate`/replay (Principle VIII — bytes
   /// are not retained between turns).
-  Future<Uint8List> readBytes(String storedPath) => File(storedPath).readAsBytes();
+  Future<Uint8List> readBytes(String storedPath) =>
+      File(storedPath).readAsBytes();
 
   /// Delete the given stored audio files (delete-cleans-files). Missing files are ignored so
   /// cleanup is idempotent.
@@ -82,4 +88,6 @@ class AudioFileStore {
 }
 
 /// App-wide [AudioFileStore]. Overridable in tests with a temp-dir-backed store.
-final audioFileStoreProvider = Provider<AudioFileStore>((ref) => AudioFileStore());
+final audioFileStoreProvider = Provider<AudioFileStore>(
+  (ref) => AudioFileStore(),
+);

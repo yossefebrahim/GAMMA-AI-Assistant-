@@ -55,8 +55,8 @@ class DeviceCapability {
     final IneligibleReason? reason = isEligible
         ? null
         : !supportsArm64
-            ? IneligibleReason.unsupportedAbi
-            : IneligibleReason.insufficientMemory;
+        ? IneligibleReason.unsupportedAbi
+        : IneligibleReason.insufficientMemory;
     return DeviceCapability(
       ramMb: ramMb,
       abis: List.unmodifiable(abis),

@@ -26,7 +26,8 @@ class RecordAudioRecorderService implements AudioRecorderService {
   Future<void> start() async {
     try {
       final dir = await getTemporaryDirectory();
-      final path = '${dir.path}/rec_${DateTime.now().microsecondsSinceEpoch}.wav';
+      final path =
+          '${dir.path}/rec_${DateTime.now().microsecondsSinceEpoch}.wav';
       await _recorder.start(
         const RecordConfig(
           encoder: AudioEncoder.wav,
@@ -38,7 +39,10 @@ class RecordAudioRecorderService implements AudioRecorderService {
     } catch (error) {
       // Fail fast with the typed failure (guarantee 2) — mic busy, hardware error, etc. The
       // controller surfaces a clear composer message; never a silent no-op.
-      throw RecorderUnavailableException('could not start the recorder', cause: error);
+      throw RecorderUnavailableException(
+        'could not start the recorder',
+        cause: error,
+      );
     }
   }
 
@@ -50,8 +54,9 @@ class RecordAudioRecorderService implements AudioRecorderService {
     if (!await file.exists()) return null;
     // The file IS PCM16 mono @16 kHz, so its byte length is the exact duration (data-model §1) —
     // no separate clock to drift from the captured audio.
-    final durationMs =
-        AudioConstants.durationFromBytes(await file.length()).inMilliseconds;
+    final durationMs = AudioConstants.durationFromBytes(
+      await file.length(),
+    ).inMilliseconds;
     return RecordedAudio(
       path: path,
       mimeType: AudioConstants.wavMimeType,
@@ -71,7 +76,12 @@ class RecordAudioRecorderService implements AudioRecorderService {
   @override
   Stream<double> get amplitude => _recorder
       .onAmplitudeChanged(const Duration(milliseconds: 100))
-      .map((amp) => ((amp.current - _silenceFloorDb) / -_silenceFloorDb).clamp(0.0, 1.0));
+      .map(
+        (amp) => ((amp.current - _silenceFloorDb) / -_silenceFloorDb).clamp(
+          0.0,
+          1.0,
+        ),
+      );
 
   /// Release the platform recorder. Not part of the seam — called by the owning provider's
   /// dispose.

@@ -39,103 +39,163 @@ void main() {
   });
 
   group('repository', () {
-    test('audio round-trips through appendUserMessage / watchMessages / loadTurns (FR-018)',
-        () async {
-      final conversation = await repo.createConversation();
-      final storedPath = await audioStore.persist(recorderTemp.path, mimeType: 'audio/wav');
+    test(
+      'audio round-trips through appendUserMessage / watchMessages / loadTurns (FR-018)',
+      () async {
+        final conversation = await repo.createConversation();
+        final storedPath = await audioStore.persist(
+          recorderTemp.path,
+          mimeType: 'audio/wav',
+        );
 
-      await repo.appendUserMessage(conversation.id, 'what did i say',
-          audio: AudioAttachment(path: storedPath, mimeType: 'audio/wav'));
-
-      final watched = await repo.watchMessages(conversation.id).first;
-      expect(watched.single.audio, isNotNull);
-      expect(watched.single.audio!.path, storedPath);
-      expect(watched.single.audio!.mimeType, 'audio/wav');
-
-      final turns = await repo.loadTurns(conversation.id);
-      expect(turns.single.audio!.path, storedPath);
-      expect(turns.single.image, isNull);
-    });
-
-    test('image AND audio together are rejected (audio XOR image, spec Q3)', () async {
-      final conversation = await repo.createConversation();
-
-      expect(
-        () => repo.appendUserMessage(
+        await repo.appendUserMessage(
           conversation.id,
-          'both',
-          image: const ImageAttachment(path: '/images/x.jpg'),
-          audio: const AudioAttachment(path: '/audio/x.wav'),
-        ),
-        throwsArgumentError,
-      );
-    });
+          'what did i say',
+          audio: AudioAttachment(path: storedPath, mimeType: 'audio/wav'),
+        );
 
-    test('an audio-only first message gets the voice-clip fallback title (FR-021)', () async {
-      final conversation = await repo.createConversation();
-      final storedPath = await audioStore.persist(recorderTemp.path, mimeType: 'audio/wav');
+        final watched = await repo.watchMessages(conversation.id).first;
+        expect(watched.single.audio, isNotNull);
+        expect(watched.single.audio!.path, storedPath);
+        expect(watched.single.audio!.mimeType, 'audio/wav');
 
-      await repo.appendUserMessage(conversation.id, '',
-          audio: AudioAttachment(path: storedPath, mimeType: 'audio/wav'));
+        final turns = await repo.loadTurns(conversation.id);
+        expect(turns.single.audio!.path, storedPath);
+        expect(turns.single.image, isNull);
+      },
+    );
 
-      final conversations = await repo.watchConversations().first;
-      expect(conversations.single.title, DriftConversationRepository.audioOnlyTitle);
-    });
+    test(
+      'image AND audio together are rejected (audio XOR image, spec Q3)',
+      () async {
+        final conversation = await repo.createConversation();
 
-    test('an empty message with no attachment is still rejected (FR-004)', () async {
-      final conversation = await repo.createConversation();
+        expect(
+          () => repo.appendUserMessage(
+            conversation.id,
+            'both',
+            image: const ImageAttachment(path: '/images/x.jpg'),
+            audio: const AudioAttachment(path: '/audio/x.wav'),
+          ),
+          throwsArgumentError,
+        );
+      },
+    );
 
-      expect(
-        () => repo.appendUserMessage(conversation.id, '   '),
-        throwsArgumentError,
-      );
-    });
+    test(
+      'an audio-only first message gets the voice-clip fallback title (FR-021)',
+      () async {
+        final conversation = await repo.createConversation();
+        final storedPath = await audioStore.persist(
+          recorderTemp.path,
+          mimeType: 'audio/wav',
+        );
 
-    test('deleteConversation deletes audio files BEFORE the cascade — no orphans (FR-019)',
-        () async {
-      final conversation = await repo.createConversation();
-      final storedPath = await audioStore.persist(recorderTemp.path, mimeType: 'audio/wav');
-      await repo.appendUserMessage(conversation.id, 'hear this',
-          audio: AudioAttachment(path: storedPath, mimeType: 'audio/wav'));
-      expect(File(storedPath).existsSync(), isTrue);
+        await repo.appendUserMessage(
+          conversation.id,
+          '',
+          audio: AudioAttachment(path: storedPath, mimeType: 'audio/wav'),
+        );
 
-      await repo.deleteConversation(conversation.id);
+        final conversations = await repo.watchConversations().first;
+        expect(
+          conversations.single.title,
+          DriftConversationRepository.audioOnlyTitle,
+        );
+      },
+    );
 
-      expect(File(storedPath).existsSync(), isFalse, reason: 'audio file removed');
-      final conversations = await repo.watchConversations().first;
-      expect(conversations, isEmpty);
-    });
+    test(
+      'an empty message with no attachment is still rejected (FR-004)',
+      () async {
+        final conversation = await repo.createConversation();
+
+        expect(
+          () => repo.appendUserMessage(conversation.id, '   '),
+          throwsArgumentError,
+        );
+      },
+    );
+
+    test(
+      'deleteConversation deletes audio files BEFORE the cascade — no orphans (FR-019)',
+      () async {
+        final conversation = await repo.createConversation();
+        final storedPath = await audioStore.persist(
+          recorderTemp.path,
+          mimeType: 'audio/wav',
+        );
+        await repo.appendUserMessage(
+          conversation.id,
+          'hear this',
+          audio: AudioAttachment(path: storedPath, mimeType: 'audio/wav'),
+        );
+        expect(File(storedPath).existsSync(), isTrue);
+
+        await repo.deleteConversation(conversation.id);
+
+        expect(
+          File(storedPath).existsSync(),
+          isFalse,
+          reason: 'audio file removed',
+        );
+        final conversations = await repo.watchConversations().first;
+        expect(conversations, isEmpty);
+      },
+    );
   });
 
   group('AudioFileStore', () {
-    test('persist copies into audio/ with a wav name; readBytes returns the bytes', () async {
-      final storedPath = await audioStore.persist(recorderTemp.path, mimeType: 'audio/wav');
+    test(
+      'persist copies into audio/ with a wav name; readBytes returns the bytes',
+      () async {
+        final storedPath = await audioStore.persist(
+          recorderTemp.path,
+          mimeType: 'audio/wav',
+        );
 
-      expect(storedPath, contains('/${AudioFileStore.subdirectory}/'));
-      expect(storedPath, endsWith('.wav'),
-          reason: 'extension from mimeType via the shared helper (002 L5)');
-      expect(File(storedPath).existsSync(), isTrue);
-      expect(recorderTemp.existsSync(), isTrue, reason: 'persist copies, never moves');
+        expect(storedPath, contains('/${AudioFileStore.subdirectory}/'));
+        expect(
+          storedPath,
+          endsWith('.wav'),
+          reason: 'extension from mimeType via the shared helper (002 L5)',
+        );
+        expect(File(storedPath).existsSync(), isTrue);
+        expect(
+          recorderTemp.existsSync(),
+          isTrue,
+          reason: 'persist copies, never moves',
+        );
 
-      final bytes = await audioStore.readBytes(storedPath);
-      expect(bytes.length, 32044);
-    });
+        final bytes = await audioStore.readBytes(storedPath);
+        expect(bytes.length, 32044);
+      },
+    );
 
     test('persist rejects an empty file (ArgumentError)', () async {
-      final empty = File('${docsDir.path}/empty.wav')..writeAsBytesSync(const []);
+      final empty = File('${docsDir.path}/empty.wav')
+        ..writeAsBytesSync(const []);
 
       expect(() => audioStore.persist(empty.path), throwsArgumentError);
     });
 
-    test('persist rejects a file over the 2 MiB guard (ArgumentError, R3)', () async {
-      final oversized = File('${docsDir.path}/big.wav')
-        ..writeAsBytesSync(List.filled(AudioConstants.maxPersistedBytes + 1, 0));
+    test(
+      'persist rejects a file over the 2 MiB guard (ArgumentError, R3)',
+      () async {
+        final oversized = File('${docsDir.path}/big.wav')
+          ..writeAsBytesSync(
+            List.filled(AudioConstants.maxPersistedBytes + 1, 0),
+          );
 
-      expect(() => audioStore.persist(oversized.path), throwsArgumentError);
-    });
+        expect(() => audioStore.persist(oversized.path), throwsArgumentError);
+      },
+    );
 
     test('deleteAll is idempotent — missing files are ignored', () async {
-      final storedPath = await audioStore.persist(recorderTemp.path, mimeType: 'audio/wav');
+      final storedPath = await audioStore.persist(
+        recorderTemp.path,
+        mimeType: 'audio/wav',
+      );
 
       await audioStore.deleteAll([storedPath, '/nonexistent/gone.wav']);
       // A second pass over already-deleted paths is fine.
@@ -144,12 +204,25 @@ void main() {
       expect(File(storedPath).existsSync(), isFalse);
     });
 
-    test('duration derives from WAV byte length: (bytes − 44) / 32000 s (data-model §1)', () {
-      // 32044 bytes = 44-byte header + 32000 payload = exactly 1 s.
-      expect(AudioConstants.durationFromBytes(32044), const Duration(seconds: 1));
-      expect(AudioConstants.durationFromBytes(44), Duration.zero);
-      expect(AudioConstants.durationFromBytes(0), Duration.zero, reason: 'degenerate clamps');
-      expect(AudioConstants.durationFromBytes(16044), const Duration(milliseconds: 500));
-    });
+    test(
+      'duration derives from WAV byte length: (bytes − 44) / 32000 s (data-model §1)',
+      () {
+        // 32044 bytes = 44-byte header + 32000 payload = exactly 1 s.
+        expect(
+          AudioConstants.durationFromBytes(32044),
+          const Duration(seconds: 1),
+        );
+        expect(AudioConstants.durationFromBytes(44), Duration.zero);
+        expect(
+          AudioConstants.durationFromBytes(0),
+          Duration.zero,
+          reason: 'degenerate clamps',
+        );
+        expect(
+          AudioConstants.durationFromBytes(16044),
+          const Duration(milliseconds: 500),
+        );
+      },
+    );
   });
 }

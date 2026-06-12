@@ -8,7 +8,8 @@ import 'package:ai_assistant/domain/entities/tool_outcome.dart';
 /// throw — the dispatcher catches and maps any exception to [ToolFailure] (FR-025). Handlers live
 /// behind infrastructure services (`lib/infrastructure/tools/`) or the existing theme mechanism;
 /// the dispatcher never imports them, only this typedef.
-typedef ToolHandler = Future<Map<String, Object?>> Function(Map<String, Object?> validArgs);
+typedef ToolHandler =
+    Future<Map<String, Object?>> Function(Map<String, Object?> validArgs);
 
 /// Maps a model-requested tool call to a typed [ToolOutcome] (004 contract:
 /// tool_registry_dispatcher.md). Plugin-free, in `lib/domain/services/`.
@@ -68,16 +69,21 @@ class ToolDispatcher {
   }
 
   Map<String, Object?> _coerceIntegerArgs(
-      Map<String, Object?> schema, Map<String, Object?> args) {
+    Map<String, Object?> schema,
+    Map<String, Object?> args,
+  ) {
     final properties =
-        (schema['properties'] as Map?)?.cast<String, Object?>() ?? const <String, Object?>{};
+        (schema['properties'] as Map?)?.cast<String, Object?>() ??
+        const <String, Object?>{};
     final out = Map<String, Object?>.of(args);
     for (final entry in args.entries) {
-      final propSchema = (properties[entry.key] as Map?)?.cast<String, Object?>();
+      final propSchema = (properties[entry.key] as Map?)
+          ?.cast<String, Object?>();
       if (propSchema?['type'] != 'integer') continue;
       final v = entry.value;
       if (v is double && v.isFinite && v == v.roundToDouble()) {
-        out[entry.key] = v.toInt(); // 300.0 → 300; 1.5 left as double → still rejected
+        out[entry.key] = v
+            .toInt(); // 300.0 → 300; 1.5 left as double → still rejected
       }
     }
     return out;
@@ -86,7 +92,10 @@ class ToolDispatcher {
   /// Bound the result JSON to [bound] chars (R3, guarantee 3). Truncates the longest string value
   /// first until it fits, marking `truncated`. v1 tools keep their own caps (clipboard 4,000
   /// chars), so this is the belt-and-braces ceiling.
-  (Map<String, Object?>, bool) _applyBound(Map<String, Object?> result, int bound) {
+  (Map<String, Object?>, bool) _applyBound(
+    Map<String, Object?> result,
+    int bound,
+  ) {
     if (jsonEncode(result).length <= bound) return (result, false);
     final bounded = Map<String, Object?>.of(result);
     while (jsonEncode(bounded).length > bound) {

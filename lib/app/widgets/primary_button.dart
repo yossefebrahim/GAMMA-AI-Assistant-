@@ -38,9 +38,7 @@ class PrimaryButton extends StatelessWidget {
           ),
           textStyle: AppText.titleM,
         ),
-        child: loading
-            ? DotPulse(color: colors.bg, dotSize: 5)
-            : Text(label),
+        child: loading ? DotPulse(color: colors.bg, dotSize: 5) : Text(label),
       ),
     );
   }

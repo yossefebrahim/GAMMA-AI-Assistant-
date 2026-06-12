@@ -35,7 +35,9 @@ class Composer extends ConsumerStatefulWidget {
   static const Key permissionGrantKey = Key('composer-perm-grant');
   static const Key permissionSettingsKey = Key('composer-perm-settings');
   static const Key permissionDismissKey = Key('composer-perm-dismiss');
-  static const Key micPermissionExplainerKey = Key('composer-mic-perm-explainer');
+  static const Key micPermissionExplainerKey = Key(
+    'composer-mic-perm-explainer',
+  );
   static const Key micPermissionGrantKey = Key('composer-mic-perm-grant');
   static const Key micPermissionSettingsKey = Key('composer-mic-perm-settings');
   static const Key micPermissionDismissKey = Key('composer-mic-perm-dismiss');
@@ -101,7 +103,9 @@ class _ComposerState extends ConsumerState<Composer> {
         content: Text(
           'to take a photo, allow camera access. you can still type and attach from your photo '
           'library.',
-          style: theme.textTheme.bodyMedium?.copyWith(color: colors.textSecondary),
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: colors.textSecondary,
+          ),
         ),
         actions: [
           TextButton(
@@ -110,7 +114,10 @@ class _ComposerState extends ConsumerState<Composer> {
               Navigator.of(dialogContext).pop();
               controller.dismissPrompt();
             },
-            child: Text('not now', style: TextStyle(color: colors.textSecondary)),
+            child: Text(
+              'not now',
+              style: TextStyle(color: colors.textSecondary),
+            ),
           ),
           if (canAskAgain)
             TextButton(
@@ -129,7 +136,10 @@ class _ComposerState extends ConsumerState<Composer> {
               controller.dismissPrompt();
               controller.openSettings();
             },
-            child: Text('open settings', style: TextStyle(color: colors.textPrimary)),
+            child: Text(
+              'open settings',
+              style: TextStyle(color: colors.textPrimary),
+            ),
           ),
         ],
       ),
@@ -152,13 +162,18 @@ class _ComposerState extends ConsumerState<Composer> {
       builder: (dialogContext) => AlertDialog(
         key: Composer.micPermissionExplainerKey,
         backgroundColor: colors.surface,
-        title: Text('microphone access needed', style: theme.textTheme.titleMedium),
+        title: Text(
+          'microphone access needed',
+          style: theme.textTheme.titleMedium,
+        ),
         content: Text(
           restricted
               ? 'microphone access is restricted on this device, so voice clips are unavailable. '
-                  'you can still type.'
+                    'you can still type.'
               : 'to record a voice clip, allow microphone access. you can still type.',
-          style: theme.textTheme.bodyMedium?.copyWith(color: colors.textSecondary),
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: colors.textSecondary,
+          ),
         ),
         actions: [
           TextButton(
@@ -167,7 +182,10 @@ class _ComposerState extends ConsumerState<Composer> {
               Navigator.of(dialogContext).pop();
               controller.dismissPrompt();
             },
-            child: Text('not now', style: TextStyle(color: colors.textSecondary)),
+            child: Text(
+              'not now',
+              style: TextStyle(color: colors.textSecondary),
+            ),
           ),
           if (canAskAgain)
             TextButton(
@@ -187,7 +205,10 @@ class _ComposerState extends ConsumerState<Composer> {
                 controller.dismissPrompt();
                 controller.openSettings();
               },
-              child: Text('open settings', style: TextStyle(color: colors.textPrimary)),
+              child: Text(
+                'open settings',
+                style: TextStyle(color: colors.textPrimary),
+              ),
             ),
         ],
       ),
@@ -215,47 +236,60 @@ class _ComposerState extends ConsumerState<Composer> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.extension<AppColors>()!;
-    final isGenerating = ref.watch(chatControllerProvider.select((s) => s.isGenerating));
+    final isGenerating = ref.watch(
+      chatControllerProvider.select((s) => s.isGenerating),
+    );
     final capabilities = ref.watch(modelCapabilitiesProvider);
-    final pending = ref.watch(attachmentControllerProvider.select((s) => s.pending));
+    final pending = ref.watch(
+      attachmentControllerProvider.select((s) => s.pending),
+    );
     final recording = ref.watch(recordingControllerProvider);
     // A brief note (cleared-on-model-switch, FR-008) or a "pick another" error (FR-021).
-    final attachmentMessage =
-        ref.watch(attachmentControllerProvider.select((s) => s.error ?? s.note));
+    final attachmentMessage = ref.watch(
+      attachmentControllerProvider.select((s) => s.error ?? s.note),
+    );
     // The recording flow's note ("too short", "limit reached", …) or inline error (003 US1/US6).
     final recordingMessage = recording.error ?? recording.note;
     final canSend = _hasText || pending != null || recording.hasClip;
 
     // Route a missing camera permission to the explainer — never a silent no-op (FR-009/FR-010).
-    ref.listen(
-      attachmentControllerProvider.select((s) => s.permissionPrompt),
-      (previous, next) {
-        if (next != AttachmentPrompt.none) {
-          _showPermissionExplainer(next);
-        }
-      },
-    );
+    ref.listen(attachmentControllerProvider.select((s) => s.permissionPrompt), (
+      previous,
+      next,
+    ) {
+      if (next != AttachmentPrompt.none) {
+        _showPermissionExplainer(next);
+      }
+    });
     // Same rule for the mic (003 US4).
-    ref.listen(
-      recordingControllerProvider.select((s) => s.permissionPrompt),
-      (previous, next) {
-        if (next != MicPermissionPrompt.none) {
-          _showMicPermissionExplainer(next);
-        }
-      },
-    );
+    ref.listen(recordingControllerProvider.select((s) => s.permissionPrompt), (
+      previous,
+      next,
+    ) {
+      if (next != MicPermissionPrompt.none) {
+        _showMicPermissionExplainer(next);
+      }
+    });
     // Recording start/stop is announced to screen readers (003 FR-028, Principle VI).
-    ref.listen(
-      recordingControllerProvider.select((s) => s.phase),
-      (previous, next) {
-        final view = View.of(context);
-        if (next == RecordingPhase.recording) {
-          SemanticsService.sendAnnouncement(view, 'recording started', TextDirection.ltr);
-        } else if (previous == RecordingPhase.recording) {
-          SemanticsService.sendAnnouncement(view, 'recording stopped', TextDirection.ltr);
-        }
-      },
-    );
+    ref.listen(recordingControllerProvider.select((s) => s.phase), (
+      previous,
+      next,
+    ) {
+      final view = View.of(context);
+      if (next == RecordingPhase.recording) {
+        SemanticsService.sendAnnouncement(
+          view,
+          'recording started',
+          TextDirection.ltr,
+        );
+      } else if (previous == RecordingPhase.recording) {
+        SemanticsService.sendAnnouncement(
+          view,
+          'recording stopped',
+          TextDirection.ltr,
+        );
+      }
+    });
 
     return Container(
       decoration: BoxDecoration(
@@ -263,53 +297,76 @@ class _ComposerState extends ConsumerState<Composer> {
         borderRadius: BorderRadius.circular(AppSpacing.radiusCard),
         border: Border.all(color: colors.outline),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.s8, vertical: AppSpacing.s4),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.s8,
+        vertical: AppSpacing.s4,
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (attachmentMessage != null)
             Padding(
-              padding: const EdgeInsets.only(top: AppSpacing.s8, left: AppSpacing.s8),
+              padding: const EdgeInsets.only(
+                top: AppSpacing.s8,
+                left: AppSpacing.s8,
+              ),
               child: Text(
                 attachmentMessage,
                 key: Composer.attachmentMessageKey,
                 // Essential lowercase guidance reads as body, not the uppercase Space Mono spec face
                 // (design-system §3); matches the chat error banner's bodyMedium.
-                style: theme.textTheme.bodyMedium?.copyWith(color: colors.textSecondary),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: colors.textSecondary,
+                ),
               ),
             ),
           if (recordingMessage != null)
             Padding(
-              padding: const EdgeInsets.only(top: AppSpacing.s8, left: AppSpacing.s8),
+              padding: const EdgeInsets.only(
+                top: AppSpacing.s8,
+                left: AppSpacing.s8,
+              ),
               child: Text(
                 recordingMessage,
                 key: Composer.recordingMessageKey,
-                style: theme.textTheme.bodyMedium?.copyWith(color: colors.textSecondary),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: colors.textSecondary,
+                ),
               ),
             ),
           if (pending != null)
             Padding(
-              padding: const EdgeInsets.only(top: AppSpacing.s8, left: AppSpacing.s4),
+              padding: const EdgeInsets.only(
+                top: AppSpacing.s8,
+                left: AppSpacing.s4,
+              ),
               child: AttachmentPreview(
                 path: pending.path,
-                onRemove: () => ref.read(attachmentControllerProvider.notifier).remove(),
+                onRemove: () =>
+                    ref.read(attachmentControllerProvider.notifier).remove(),
                 onReplace: _openSourceChooser,
               ),
             ),
           if (recording.hasClip)
             Padding(
-              padding: const EdgeInsets.only(top: AppSpacing.s8, left: AppSpacing.s4),
+              padding: const EdgeInsets.only(
+                top: AppSpacing.s8,
+                left: AppSpacing.s4,
+              ),
               child: AudioChip.composer(
                 durationMs: recording.clip!.durationMs,
                 isPlaying: recording.isPreviewPlaying,
                 onTogglePlay: () {
-                  final controller = ref.read(recordingControllerProvider.notifier);
+                  final controller = ref.read(
+                    recordingControllerProvider.notifier,
+                  );
                   recording.isPreviewPlaying
                       ? controller.stopPreview()
                       : controller.playPreview();
                 },
-                onRemove: () => ref.read(recordingControllerProvider.notifier).removeClip(),
+                onRemove: () =>
+                    ref.read(recordingControllerProvider.notifier).removeClip(),
               ),
             ),
           if (recording.isRecording)
@@ -317,7 +374,9 @@ class _ComposerState extends ConsumerState<Composer> {
             // the one red stop control (≥48dp) — the design system's reserved use of the accent.
             Padding(
               padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.s8, vertical: AppSpacing.s4),
+                horizontal: AppSpacing.s8,
+                vertical: AppSpacing.s4,
+              ),
               child: Row(
                 children: [
                   RecordingIndicator(
@@ -326,8 +385,9 @@ class _ComposerState extends ConsumerState<Composer> {
                   ),
                   const Spacer(),
                   _RecordStopButton(
-                    onPressed: () =>
-                        ref.read(recordingControllerProvider.notifier).stopRecording(),
+                    onPressed: () => ref
+                        .read(recordingControllerProvider.notifier)
+                        .stopRecording(),
                   ),
                 ],
               ),
@@ -341,16 +401,23 @@ class _ComposerState extends ConsumerState<Composer> {
                     key: Composer.attachKey,
                     tooltip: 'attach image',
                     onPressed: _openSourceChooser,
-                    icon: Icon(Icons.add_photo_alternate_outlined, color: colors.textSecondary),
+                    icon: Icon(
+                      Icons.add_photo_alternate_outlined,
+                      color: colors.textSecondary,
+                    ),
                   ),
                 // Capability-gated mic (003 US1/US2) — rendered from `capabilities.audio` as DATA.
                 if (capabilities.audio)
                   IconButton(
                     key: Composer.micKey,
                     tooltip: 'record voice clip',
-                    onPressed: () =>
-                        ref.read(recordingControllerProvider.notifier).onMicTap(),
-                    icon: Icon(Icons.mic_none_outlined, color: colors.textSecondary),
+                    onPressed: () => ref
+                        .read(recordingControllerProvider.notifier)
+                        .onMicTap(),
+                    icon: Icon(
+                      Icons.mic_none_outlined,
+                      color: colors.textSecondary,
+                    ),
                   ),
                 Expanded(
                   child: TextField(
@@ -364,7 +431,9 @@ class _ComposerState extends ConsumerState<Composer> {
                     decoration: InputDecoration(
                       border: InputBorder.none,
                       hintText: 'message',
-                      hintStyle: theme.textTheme.bodyLarge?.copyWith(color: colors.textMuted),
+                      hintStyle: theme.textTheme.bodyLarge?.copyWith(
+                        color: colors.textMuted,
+                      ),
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: AppSpacing.s8,
                         vertical: AppSpacing.s12,
@@ -398,14 +467,20 @@ class _SourceSheet extends StatelessWidget {
         children: [
           ListTile(
             key: Composer.cameraOptionKey,
-            leading: Icon(Icons.photo_camera_outlined, color: colors.textPrimary),
+            leading: Icon(
+              Icons.photo_camera_outlined,
+              color: colors.textPrimary,
+            ),
             title: Text('camera', style: theme.textTheme.bodyLarge),
             onTap: () => Navigator.of(context).pop(_PickSource.camera),
           ),
           Divider(height: AppSpacing.hairline, color: colors.outline),
           ListTile(
             key: Composer.libraryOptionKey,
-            leading: Icon(Icons.photo_library_outlined, color: colors.textPrimary),
+            leading: Icon(
+              Icons.photo_library_outlined,
+              color: colors.textPrimary,
+            ),
             title: Text('photo library', style: theme.textTheme.bodyLarge),
             onTap: () => Navigator.of(context).pop(_PickSource.library),
           ),
@@ -474,7 +549,10 @@ class _RecordStopButton extends StatelessWidget {
       style: IconButton.styleFrom(
         backgroundColor: colors.accent,
         foregroundColor: colors.onAccent,
-        minimumSize: const Size(AppSpacing.minTouchTarget, AppSpacing.minTouchTarget),
+        minimumSize: const Size(
+          AppSpacing.minTouchTarget,
+          AppSpacing.minTouchTarget,
+        ),
       ),
       icon: const Icon(Icons.stop_rounded),
     );

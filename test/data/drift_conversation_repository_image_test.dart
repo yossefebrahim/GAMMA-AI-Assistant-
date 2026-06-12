@@ -30,7 +30,8 @@ void main() {
       store,
       AudioFileStore(documentsDirectory: () async => imagesDir),
     );
-    pickerTemp = File('${imagesDir.path}/picked.jpg')..writeAsBytesSync([1, 2, 3, 4]);
+    pickerTemp = File('${imagesDir.path}/picked.jpg')
+      ..writeAsBytesSync([1, 2, 3, 4]);
   });
 
   tearDown(() async {
@@ -38,61 +39,84 @@ void main() {
     if (imagesDir.existsSync()) imagesDir.deleteSync(recursive: true);
   });
 
-  test('persists a message with an image and reads it back with the image populated '
-      '(FR-018, SC-005)', () async {
-    final conversation = await repo.createConversation();
-    final storedPath = await store.persist(pickerTemp.path);
+  test(
+    'persists a message with an image and reads it back with the image populated '
+    '(FR-018, SC-005)',
+    () async {
+      final conversation = await repo.createConversation();
+      final storedPath = await store.persist(pickerTemp.path);
 
-    await repo.appendUserMessage(
-      conversation.id,
-      'what is this',
-      image: ImageAttachment(path: storedPath, mimeType: 'image/jpeg'),
-    );
+      await repo.appendUserMessage(
+        conversation.id,
+        'what is this',
+        image: ImageAttachment(path: storedPath, mimeType: 'image/jpeg'),
+      );
 
-    final turns = await repo.loadTurns(conversation.id);
-    final user = turns.single;
-    expect(user.image, isNotNull);
-    expect(user.image!.path, storedPath);
-    expect(user.image!.mimeType, 'image/jpeg');
-    expect(File(storedPath).existsSync(), isTrue);
-  });
+      final turns = await repo.loadTurns(conversation.id);
+      final user = turns.single;
+      expect(user.image, isNotNull);
+      expect(user.image!.path, storedPath);
+      expect(user.image!.mimeType, 'image/jpeg');
+      expect(File(storedPath).existsSync(), isTrue);
+    },
+  );
 
-  test('an image-only first message derives the fallback title (FR-021)', () async {
-    final conversation = await repo.createConversation();
-    final storedPath = await store.persist(pickerTemp.path);
+  test(
+    'an image-only first message derives the fallback title (FR-021)',
+    () async {
+      final conversation = await repo.createConversation();
+      final storedPath = await store.persist(pickerTemp.path);
 
-    await repo.appendUserMessage(
-      conversation.id,
-      '',
-      image: ImageAttachment(path: storedPath),
-    );
+      await repo.appendUserMessage(
+        conversation.id,
+        '',
+        image: ImageAttachment(path: storedPath),
+      );
 
-    final conversations = await repo.watchConversations().first;
-    expect(conversations.single.title, DriftConversationRepository.imageOnlyTitle);
-  });
+      final conversations = await repo.watchConversations().first;
+      expect(
+        conversations.single.title,
+        DriftConversationRepository.imageOnlyTitle,
+      );
+    },
+  );
 
-  test('appendUserMessage rejects an empty message with no image (FR-004)', () async {
-    final conversation = await repo.createConversation();
-    expect(
-      () => repo.appendUserMessage(conversation.id, '   '),
-      throwsA(isA<ArgumentError>()),
-    );
-  });
+  test(
+    'appendUserMessage rejects an empty message with no image (FR-004)',
+    () async {
+      final conversation = await repo.createConversation();
+      expect(
+        () => repo.appendUserMessage(conversation.id, '   '),
+        throwsA(isA<ArgumentError>()),
+      );
+    },
+  );
 
-  test('deleteConversation deletes the image files and cascades the rows (FR-019)', () async {
-    final conversation = await repo.createConversation();
-    final storedPath = await store.persist(pickerTemp.path);
-    await repo.appendUserMessage(
-      conversation.id,
-      'look',
-      image: ImageAttachment(path: storedPath),
-    );
-    expect(File(storedPath).existsSync(), isTrue);
+  test(
+    'deleteConversation deletes the image files and cascades the rows (FR-019)',
+    () async {
+      final conversation = await repo.createConversation();
+      final storedPath = await store.persist(pickerTemp.path);
+      await repo.appendUserMessage(
+        conversation.id,
+        'look',
+        image: ImageAttachment(path: storedPath),
+      );
+      expect(File(storedPath).existsSync(), isTrue);
 
-    await repo.deleteConversation(conversation.id);
+      await repo.deleteConversation(conversation.id);
 
-    expect(File(storedPath).existsSync(), isFalse, reason: 'image file removed (FR-019)');
-    expect(await db.select(db.messages).get(), isEmpty, reason: 'messages cascade');
-    expect(await repo.loadTurns(conversation.id), isEmpty);
-  });
+      expect(
+        File(storedPath).existsSync(),
+        isFalse,
+        reason: 'image file removed (FR-019)',
+      );
+      expect(
+        await db.select(db.messages).get(),
+        isEmpty,
+        reason: 'messages cascade',
+      );
+      expect(await repo.loadTurns(conversation.id), isEmpty);
+    },
+  );
 }

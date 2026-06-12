@@ -32,8 +32,9 @@ void main() {
         mediaPermissionServiceProvider.overrideWithValue(permission),
         audioRecorderServiceProvider.overrideWithValue(recorder),
         audioPreviewPlayerProvider.overrideWithValue(FakeAudioPreviewPlayer()),
-        modelCapabilitiesProvider
-            .overrideWith((ref) => const ModelCapabilities(image: true, audio: true)),
+        modelCapabilitiesProvider.overrideWith(
+          (ref) => const ModelCapabilities(image: true, audio: true),
+        ),
         modelSessionReadyProvider.overrideWith((ref) => true),
         tempFileDeleterProvider.overrideWithValue((path) async {}),
       ],
@@ -43,16 +44,18 @@ void main() {
   tearDown(() => container.dispose());
 
   Widget app() => UncontrolledProviderScope(
-        container: container,
-        child: MaterialApp(
-          theme: AppTheme.light,
-          darkTheme: AppTheme.dark,
-          themeMode: ThemeMode.dark,
-          home: const Scaffold(body: Composer()),
-        ),
-      );
+    container: container,
+    child: MaterialApp(
+      theme: AppTheme.light,
+      darkTheme: AppTheme.dark,
+      themeMode: ThemeMode.dark,
+      home: const Scaffold(body: Composer()),
+    ),
+  );
 
-  testWidgets('no permission call fires at build — first-use only (FR-010)', (tester) async {
+  testWidgets('no permission call fires at build — first-use only (FR-010)', (
+    tester,
+  ) async {
     await tester.pumpWidget(app());
     await tester.pump();
 
@@ -62,7 +65,10 @@ void main() {
 
   testWidgets('granted → recording starts with no explainer', (tester) async {
     recorder.nextStop = const RecordedAudio(
-        path: '/fake/tmp/x.wav', mimeType: 'audio/wav', durationMs: 1000);
+      path: '/fake/tmp/x.wav',
+      mimeType: 'audio/wav',
+      durationMs: 1000,
+    );
     await tester.pumpWidget(app());
     await tester.pump();
 
@@ -81,7 +87,10 @@ void main() {
       ..micStatusValue = MediaPermissionStatus.denied
       ..micRequestResults = [MediaPermissionStatus.granted];
     recorder.nextStop = const RecordedAudio(
-        path: '/fake/tmp/x.wav', mimeType: 'audio/wav', durationMs: 1000);
+      path: '/fake/tmp/x.wav',
+      mimeType: 'audio/wav',
+      durationMs: 1000,
+    );
     await tester.pumpWidget(app());
     await tester.pump();
 
@@ -95,43 +104,60 @@ void main() {
     await tester.pump();
   });
 
-  testWidgets('denied → request → denied shows the explainer with a re-request path (FR-011)',
-      (tester) async {
-    permission
-      ..micStatusValue = MediaPermissionStatus.denied
-      ..micRequestResults = [MediaPermissionStatus.denied];
-    await tester.pumpWidget(app());
-    await tester.pump();
+  testWidgets(
+    'denied → request → denied shows the explainer with a re-request path (FR-011)',
+    (tester) async {
+      permission
+        ..micStatusValue = MediaPermissionStatus.denied
+        ..micRequestResults = [MediaPermissionStatus.denied];
+      await tester.pumpWidget(app());
+      await tester.pump();
 
-    await tester.tap(find.byKey(Composer.micKey));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byKey(Composer.micKey));
+      await tester.pumpAndSettle();
 
-    expect(find.byKey(Composer.micPermissionExplainerKey), findsOneWidget);
-    expect(find.byKey(Composer.micPermissionGrantKey), findsOneWidget,
-        reason: 'still askable → re-request offered');
-    expect(find.byKey(Composer.micPermissionDismissKey), findsOneWidget);
-  });
+      expect(find.byKey(Composer.micPermissionExplainerKey), findsOneWidget);
+      expect(
+        find.byKey(Composer.micPermissionGrantKey),
+        findsOneWidget,
+        reason: 'still askable → re-request offered',
+      );
+      expect(find.byKey(Composer.micPermissionDismissKey), findsOneWidget);
+    },
+  );
 
-  testWidgets('permanently denied → explainer WITHOUT grant but WITH open settings, which '
-      'invokes the service (FR-011)', (tester) async {
-    permission.micStatusValue = MediaPermissionStatus.permanentlyDenied;
-    await tester.pumpWidget(app());
-    await tester.pump();
+  testWidgets(
+    'permanently denied → explainer WITHOUT grant but WITH open settings, which '
+    'invokes the service (FR-011)',
+    (tester) async {
+      permission.micStatusValue = MediaPermissionStatus.permanentlyDenied;
+      await tester.pumpWidget(app());
+      await tester.pump();
 
-    await tester.tap(find.byKey(Composer.micKey));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byKey(Composer.micKey));
+      await tester.pumpAndSettle();
 
-    expect(find.byKey(Composer.micPermissionExplainerKey), findsOneWidget);
-    expect(find.byKey(Composer.micPermissionGrantKey), findsNothing,
-        reason: 'no grant path for a permanently-denied permission');
-    expect(find.byKey(Composer.micPermissionSettingsKey), findsOneWidget);
+      expect(find.byKey(Composer.micPermissionExplainerKey), findsOneWidget);
+      expect(
+        find.byKey(Composer.micPermissionGrantKey),
+        findsNothing,
+        reason: 'no grant path for a permanently-denied permission',
+      );
+      expect(find.byKey(Composer.micPermissionSettingsKey), findsOneWidget);
 
-    await tester.tap(find.byKey(Composer.micPermissionSettingsKey));
-    await tester.pumpAndSettle();
-    expect(permission.openSettingsCalls, 1, reason: 'recorded call on the seam');
-  });
+      await tester.tap(find.byKey(Composer.micPermissionSettingsKey));
+      await tester.pumpAndSettle();
+      expect(
+        permission.openSettingsCalls,
+        1,
+        reason: 'recorded call on the seam',
+      );
+    },
+  );
 
-  testWidgets('restricted → explainer with no grant path (FR-011)', (tester) async {
+  testWidgets('restricted → explainer with no grant path (FR-011)', (
+    tester,
+  ) async {
     permission.micStatusValue = MediaPermissionStatus.restricted;
     await tester.pumpWidget(app());
     await tester.pump();
@@ -144,21 +170,27 @@ void main() {
     expect(find.textContaining('restricted'), findsOneWidget);
   });
 
-  testWidgets('dismissing the explainer returns a fully usable composer — declining never '
-      'breaks text chat (FR-012, SC-007)', (tester) async {
-    permission.micStatusValue = MediaPermissionStatus.permanentlyDenied;
-    await tester.pumpWidget(app());
-    await tester.pump();
+  testWidgets(
+    'dismissing the explainer returns a fully usable composer — declining never '
+    'breaks text chat (FR-012, SC-007)',
+    (tester) async {
+      permission.micStatusValue = MediaPermissionStatus.permanentlyDenied;
+      await tester.pumpWidget(app());
+      await tester.pump();
 
-    await tester.tap(find.byKey(Composer.micKey));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(Composer.micPermissionDismissKey));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byKey(Composer.micKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(Composer.micPermissionDismissKey));
+      await tester.pumpAndSettle();
 
-    expect(find.byKey(Composer.micPermissionExplainerKey), findsNothing);
-    expect(find.byKey(Composer.fieldKey), findsOneWidget);
-    await tester.enterText(find.byKey(Composer.fieldKey), 'still works');
-    await tester.pump();
-    expect(tester.widget<IconButton>(find.byKey(Composer.sendKey)).onPressed, isNotNull);
-  });
+      expect(find.byKey(Composer.micPermissionExplainerKey), findsNothing);
+      expect(find.byKey(Composer.fieldKey), findsOneWidget);
+      await tester.enterText(find.byKey(Composer.fieldKey), 'still works');
+      await tester.pump();
+      expect(
+        tester.widget<IconButton>(find.byKey(Composer.sendKey)).onPressed,
+        isNotNull,
+      );
+    },
+  );
 }

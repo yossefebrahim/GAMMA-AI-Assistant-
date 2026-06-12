@@ -15,8 +15,8 @@ class FakeMediaPermissionService implements MediaPermissionService {
     List<MediaPermissionStatus>? requestResults,
     this.micStatusValue = MediaPermissionStatus.granted,
     List<MediaPermissionStatus>? micRequestResults,
-  })  : requestResults = requestResults ?? <MediaPermissionStatus>[],
-        micRequestResults = micRequestResults ?? <MediaPermissionStatus>[];
+  }) : requestResults = requestResults ?? <MediaPermissionStatus>[],
+       micRequestResults = micRequestResults ?? <MediaPermissionStatus>[];
 
   /// Status returned by [cameraStatus].
   MediaPermissionStatus status;

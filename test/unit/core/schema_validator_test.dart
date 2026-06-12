@@ -20,7 +20,11 @@ void main() {
         'type': 'string',
         'enum': <String>['dark', 'light'],
       },
-      'seconds': <String, Object?>{'type': 'integer', 'minimum': 1, 'maximum': 86400},
+      'seconds': <String, Object?>{
+        'type': 'integer',
+        'minimum': 1,
+        'maximum': 86400,
+      },
       'label': <String, Object?>{'type': 'string'},
     },
     'required': <String>['theme'],
@@ -52,7 +56,10 @@ void main() {
         'properties': <String, Object?>{},
         'required': <String>[],
       };
-      expect(validator.validate(noArgs, const <String, Object?>{}).isValid, isTrue);
+      expect(
+        validator.validate(noArgs, const <String, Object?>{}).isValid,
+        isTrue,
+      );
     });
   });
 
@@ -65,7 +72,10 @@ void main() {
     });
 
     test('unknown key is rejected (strict mode)', () {
-      final result = validator.validate(schema, {'theme': 'dark', 'bogus': 'x'});
+      final result = validator.validate(schema, {
+        'theme': 'dark',
+        'bogus': 'x',
+      });
       expect(result, isA<InvalidT>());
       expect((result as InvalidT).reason, contains('bogus'));
     });
@@ -83,27 +93,82 @@ void main() {
     });
 
     test('integer below minimum', () {
-      final result = validator.validate(schema, {'theme': 'dark', 'seconds': 0});
+      final result = validator.validate(schema, {
+        'theme': 'dark',
+        'seconds': 0,
+      });
       expect(result, isA<InvalidT>());
       expect((result as InvalidT).reason, contains('seconds'));
     });
 
     test('integer above maximum', () {
-      final result = validator.validate(schema, {'theme': 'dark', 'seconds': 90000});
+      final result = validator.validate(schema, {
+        'theme': 'dark',
+        'seconds': 90000,
+      });
       expect(result, isA<InvalidT>());
       expect((result as InvalidT).reason, contains('seconds'));
     });
 
     test('a double is not an integer', () {
-      final result = validator.validate(schema, {'theme': 'dark', 'seconds': 1.5});
+      final result = validator.validate(schema, {
+        'theme': 'dark',
+        'seconds': 1.5,
+      });
       expect(result, isA<InvalidT>());
       expect((result as InvalidT).reason, contains('seconds'));
     });
 
     test('non-object root is rejected', () {
-      final result =
-          validator.validate(const {'type': 'string'}, const {'theme': 'dark'});
+      final result = validator.validate(
+        const {'type': 'string'},
+        const {'theme': 'dark'},
+      );
       expect(result, isA<InvalidT>());
     });
+  });
+
+  // ── T012 — maxLength for type:string (R5 memory fact cap) ──────────────────
+  group('maxLength', () {
+    // A minimal schema with a maxLength-bounded string property.
+    const factSchema = <String, Object?>{
+      'type': 'object',
+      'properties': <String, Object?>{
+        'fact': <String, Object?>{'type': 'string', 'maxLength': 80},
+      },
+      'required': <String>['fact'],
+    };
+
+    test('string at exactly maxLength is valid', () {
+      final value = 'x' * 80;
+      final result = validator.validate(factSchema, {'fact': value});
+      expect(result.isValid, isTrue);
+    });
+
+    test('string one character over maxLength is invalid', () {
+      final value = 'x' * 81;
+      final result = validator.validate(factSchema, {'fact': value});
+      expect(result, isA<InvalidT>());
+      // reason must mention the property name and the limit
+      expect((result as InvalidT).reason, contains('fact'));
+      expect(result.reason, contains('80'));
+    });
+
+    test(
+      'maxLength is ignored when value is not a string (type mismatch reported first)',
+      () {
+        // Non-string triggers the type check before maxLength; no crash.
+        const numSchema = <String, Object?>{
+          'type': 'object',
+          'properties': <String, Object?>{
+            'count': <String, Object?>{'type': 'string', 'maxLength': 5},
+          },
+          'required': <String>['count'],
+        };
+        final result = validator.validate(numSchema, {'count': 42});
+        expect(result, isA<InvalidT>());
+        expect((result as InvalidT).reason, contains('string'));
+      },
+    );
   });
 }

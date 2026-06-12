@@ -7,7 +7,8 @@ import 'dart:convert';
 ///
 /// The shape, captured verbatim from the device run:
 /// `{"role":"assistant","tool_calls":[{"type":"function","function":{"name":<n>,"arguments":<a>}}]}`
-String reconstructToolCallJson(String name, Map<String, Object?> args) => jsonEncode({
+String reconstructToolCallJson(String name, Map<String, Object?> args) =>
+    jsonEncode({
       'role': 'assistant',
       'tool_calls': [
         {

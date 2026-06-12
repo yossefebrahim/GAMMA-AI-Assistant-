@@ -27,20 +27,20 @@ class ChatTurn {
 
   /// Convenience constructor for a user turn (optionally media-bearing).
   const ChatTurn.user(this.text, {this.image, this.audio})
-      : isUser = true,
-        toolName = null,
-        toolArgs = null,
-        toolResult = null;
+    : isUser = true,
+      toolName = null,
+      toolArgs = null,
+      toolResult = null;
 
   /// Convenience constructor for an assistant turn (including stopped-partial turns). Assistant
   /// turns never carry media.
   const ChatTurn.assistant(this.text)
-      : isUser = false,
-        image = null,
-        audio = null,
-        toolName = null,
-        toolArgs = null,
-        toolResult = null;
+    : isUser = false,
+      image = null,
+      audio = null,
+      toolName = null,
+      toolArgs = null,
+      toolResult = null;
 
   /// Convenience constructor for a tool turn (004) — replayed as the plugin call+response pair.
   /// [result] is the success payload OR `{error: reason}` for error/skipped rows (context fidelity
@@ -49,13 +49,13 @@ class ChatTurn {
     required String name,
     required Map<String, Object?> args,
     required Map<String, Object?> result,
-  })  : isUser = false,
-        text = '',
-        image = null,
-        audio = null,
-        toolName = name,
-        toolArgs = args,
-        toolResult = result;
+  }) : isUser = false,
+       text = '',
+       image = null,
+       audio = null,
+       toolName = name,
+       toolArgs = args,
+       toolResult = result;
 
   final bool isUser;
   final String text;
@@ -93,7 +93,14 @@ class ChatTurn {
 
   @override
   int get hashCode => Object.hash(
-      isUser, text, image, audio, toolName, _mapHash(toolArgs), _mapHash(toolResult));
+    isUser,
+    text,
+    image,
+    audio,
+    toolName,
+    _mapHash(toolArgs),
+    _mapHash(toolResult),
+  );
 }
 
 bool _mapEquals(Map<String, Object?>? a, Map<String, Object?>? b) {

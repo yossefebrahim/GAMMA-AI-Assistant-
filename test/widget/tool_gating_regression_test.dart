@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:ai_assistant/app/theme/app_theme.dart';
 import 'package:ai_assistant/data/repositories/drift_conversation_repository.dart';
 import 'package:ai_assistant/domain/entities/message.dart';
@@ -28,70 +30,89 @@ void main() {
   setUp(() {
     // A text-only model — function calling OFF.
     gemma = FakeGemmaService(capabilitiesData: ModelCapabilities.textOnly);
-    container = makeContainer(overrides: [
-      gemmaServiceProvider.overrideWithValue(gemma),
-      modelSessionProvider.overrideWith((ref) => gemma),
-    ]);
+    container = makeContainer(
+      overrides: [
+        gemmaServiceProvider.overrideWithValue(gemma),
+        modelSessionProvider.overrideWith((ref) => gemma),
+      ],
+    );
   });
 
   tearDown(() => container.dispose());
 
   Widget app() => UncontrolledProviderScope(
-        container: container,
-        child: MaterialApp(
-          theme: AppTheme.light,
-          darkTheme: AppTheme.dark,
-          themeMode: ThemeMode.dark,
-          home: const ChatScreen(),
-        ),
+    container: container,
+    child: MaterialApp(
+      theme: AppTheme.light,
+      darkTheme: AppTheme.dark,
+      themeMode: ThemeMode.dark,
+      home: const ChatScreen(),
+    ),
+  );
+
+  testWidgets(
+    'flag-off: a fresh chat turn produces zero chips (text-only parity)',
+    (tester) async {
+      gemma
+        ..scriptedDeltas = ['plain ', 'reply']
+        ..deltaInterval = const Duration(milliseconds: 20);
+
+      await tester.pumpWidget(app());
+      await tester.pump();
+
+      await tester.enterText(find.byKey(Composer.fieldKey), 'hello');
+      await tester.pump();
+      await tester.tap(find.byKey(Composer.sendKey));
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 25));
+      }
+
+      expect(find.textContaining('plain reply'), findsOneWidget);
+      expect(
+        find.byType(ToolChip),
+        findsNothing,
+        reason: 'no chips when function calling is off',
       );
+    },
+  );
 
-  testWidgets('flag-off: a fresh chat turn produces zero chips (text-only parity)',
-      (tester) async {
-    gemma
-      ..scriptedDeltas = ['plain ', 'reply']
-      ..deltaInterval = const Duration(milliseconds: 20);
+  testWidgets(
+    'flag-off: a persisted tool chip from history STILL renders (FR-010)',
+    (tester) async {
+      final repo = container.read(conversationRepositoryProvider);
+      final conversationId = await _seedToolChip(repo);
 
-    await tester.pumpWidget(app());
-    await tester.pump();
+      await tester.pumpWidget(app());
+      await tester.pump();
+      unawaited(
+        container
+            .read(chatControllerProvider.notifier)
+            .openConversation(conversationId),
+      );
+      await tester.pump();
+      await tester.pump();
 
-    await tester.enterText(find.byKey(Composer.fieldKey), 'hello');
-    await tester.pump();
-    await tester.tap(find.byKey(Composer.sendKey));
-    for (var i = 0; i < 8; i++) {
-      await tester.pump(const Duration(milliseconds: 25));
-    }
-
-    expect(find.textContaining('plain reply'), findsOneWidget);
-    expect(find.byType(ToolChip), findsNothing, reason: 'no chips when function calling is off');
-  });
-
-  testWidgets('flag-off: a persisted tool chip from history STILL renders (FR-010)',
-      (tester) async {
-    final repo = container.read(conversationRepositoryProvider);
-    final conversationId = await _seedToolChip(repo);
-
-    await tester.pumpWidget(app());
-    await tester.pump();
-    container.read(chatControllerProvider.notifier).openConversation(conversationId);
-    await tester.pump();
-    await tester.pump();
-
-    // The chip outlives the capability that produced it.
-    expect(find.byType(ToolChip), findsOneWidget);
-    expect(find.text('TOOL · GET_DEVICE_INFO'), findsOneWidget);
-  });
+      // The chip outlives the capability that produced it.
+      expect(find.byType(ToolChip), findsOneWidget);
+      expect(find.text('TOOL · GET_DEVICE_INFO'), findsOneWidget);
+    },
+  );
 }
 
 Future<int> _seedToolChip(ConversationRepository repo) async {
   final conv = await repo.createConversation();
   await repo.appendUserMessage(conv.id, 'battery?');
   final toolId = await repo.appendToolInvocation(
-      conversationId: conv.id, toolName: 'get_device_info', args: const {});
-  await repo.finalizeToolInvocation(toolId,
-      status: ToolCallStatus.success,
-      result: const {'batteryLevel': 83},
-      summary: 'batterylevel 83');
+    conversationId: conv.id,
+    toolName: 'get_device_info',
+    args: const {},
+  );
+  await repo.finalizeToolInvocation(
+    toolId,
+    status: ToolCallStatus.success,
+    result: const {'batteryLevel': 83},
+    summary: 'batterylevel 83',
+  );
   final assistantId = await repo.beginAssistantMessage(conv.id);
   await repo.updateAssistantContent(assistantId, '83%');
   await repo.finalizeAssistantMessage(assistantId, MessageStatus.complete);

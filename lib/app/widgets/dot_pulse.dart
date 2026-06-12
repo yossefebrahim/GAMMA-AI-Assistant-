@@ -23,7 +23,8 @@ class DotPulse extends StatefulWidget {
   State<DotPulse> createState() => _DotPulseState();
 }
 
-class _DotPulseState extends State<DotPulse> with SingleTickerProviderStateMixin {
+class _DotPulseState extends State<DotPulse>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 900),
@@ -37,7 +38,8 @@ class _DotPulseState extends State<DotPulse> with SingleTickerProviderStateMixin
 
   @override
   Widget build(BuildContext context) {
-    final color = widget.color ?? Theme.of(context).extension<AppColors>()!.textSecondary;
+    final color =
+        widget.color ?? Theme.of(context).extension<AppColors>()!.textSecondary;
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, _) {
@@ -46,9 +48,12 @@ class _DotPulseState extends State<DotPulse> with SingleTickerProviderStateMixin
           children: List<Widget>.generate(widget.dotCount, (index) {
             // Phase-shift each dot so the pulse travels across the row.
             final phase = (_controller.value - index / widget.dotCount) % 1.0;
-            final opacity = 0.25 + 0.75 * (1 - (phase * 2 - 1).abs()).clamp(0.0, 1.0);
+            final opacity =
+                0.25 + 0.75 * (1 - (phase * 2 - 1).abs()).clamp(0.0, 1.0);
             return Padding(
-              padding: EdgeInsets.only(right: index == widget.dotCount - 1 ? 0 : widget.spacing),
+              padding: EdgeInsets.only(
+                right: index == widget.dotCount - 1 ? 0 : widget.spacing,
+              ),
               child: Container(
                 width: widget.dotSize,
                 height: widget.dotSize,
