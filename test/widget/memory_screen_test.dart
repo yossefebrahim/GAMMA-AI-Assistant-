@@ -573,6 +573,30 @@ void main() {
     expect(size.height, greaterThanOrEqualTo(AppSpacing.minTouchTarget));
   });
 
+  testWidgets(
+    'a one-line fact row meets the 48dp min-height floor (F6 — ConstrainedBox, not a no-op SizedBox)',
+    (tester) async {
+      memoryRepo.seed([
+        fact(id: 1, text: 'short fact', category: MemoryCategory.identity),
+      ]);
+
+      await tester.pumpWidget(app());
+      emitSettings();
+      await tester.pump();
+      await tester.pump();
+
+      // The ListTile is the whole row; its enclosing ConstrainedBox guarantees the 48dp floor even
+      // though `minVerticalPadding: 0` removes ListTile's own height floor.
+      final rowSize = tester.getSize(
+        find.ancestor(
+          of: find.text('short fact'),
+          matching: find.byType(ListTile),
+        ),
+      );
+      expect(rowSize.height, greaterThanOrEqualTo(AppSpacing.minTouchTarget));
+    },
+  );
+
   // ── AA contrast (code-enforceable slice) ─────────────────────────────────────
 
   testWidgets('destructive clear-all button uses the accent (red) foreground color', (

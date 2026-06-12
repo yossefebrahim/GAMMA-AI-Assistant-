@@ -214,13 +214,20 @@ class _FactRow extends ConsumerWidget {
 
   final Memory memory;
 
+  /// Edit/delete icon glyph size (the 48dp touch target is the enclosing SizedBox; the glyph is
+  /// smaller for visual weight). Named so the literal isn't repeated across both buttons (F8).
+  static const double _iconSize = 20;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final colors = theme.extension<AppColors>()!;
 
-    return SizedBox(
-      // 48dp minimum touch target (accessibility floor — Principle VI, FR-031).
+    return ConstrainedBox(
+      // 48dp minimum touch-target floor for the whole row (accessibility — Principle VI, FR-024).
+      // A min (not fixed) height so a fact that wraps to two lines still grows; `minVerticalPadding:
+      // 0` removes ListTile's own padding-based floor, so this constraint is what guarantees it.
+      constraints: const BoxConstraints(minHeight: AppSpacing.minTouchTarget),
       child: ListTile(
         minVerticalPadding: 0,
         contentPadding: const EdgeInsets.symmetric(
@@ -237,8 +244,8 @@ class _FactRow extends ConsumerWidget {
             ),
           ),
         ),
-        // Trailing action row — edit + delete. Both meet 48dp because they sit inside a ListTile
-        // whose own minimum height is enforced by the 48dp SizedBox wrapper above.
+        // Trailing action row — edit + delete. Each icon button is its own 48dp touch target
+        // (the SizedBox below); the row's own min height comes from the ConstrainedBox above.
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -250,7 +257,7 @@ class _FactRow extends ConsumerWidget {
                 icon: Icon(
                   Icons.edit_outlined,
                   color: colors.textSecondary,
-                  size: 20,
+                  size: _iconSize,
                 ),
                 tooltip: 'edit',
                 onPressed: () => _showEditDialog(context, ref),
@@ -264,7 +271,7 @@ class _FactRow extends ConsumerWidget {
                 icon: Icon(
                   Icons.delete_outline,
                   color: colors.textSecondary,
-                  size: 20,
+                  size: _iconSize,
                 ),
                 tooltip: 'delete',
                 onPressed: () => _confirmDelete(context, ref),

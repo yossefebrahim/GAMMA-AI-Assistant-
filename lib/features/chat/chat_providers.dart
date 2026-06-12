@@ -1,5 +1,3 @@
-import 'package:ai_assistant/core/memory/facts_block_composer.dart';
-import 'package:ai_assistant/core/memory/system_instruction_composer.dart';
 import 'package:ai_assistant/core/model_catalog.dart';
 import 'package:ai_assistant/core/tools/tool_registry.dart';
 import 'package:ai_assistant/data/model/background_model_downloader.dart';
@@ -10,6 +8,7 @@ import 'package:ai_assistant/domain/entities/tool_spec.dart';
 import 'package:ai_assistant/domain/services/audio_preview_player.dart';
 import 'package:ai_assistant/domain/services/audio_recorder_service.dart';
 import 'package:ai_assistant/domain/services/gemma_service.dart';
+import 'package:ai_assistant/features/chat/session_instruction.dart';
 import 'package:ai_assistant/infrastructure/gemma/flutter_gemma_service.dart';
 import 'package:ai_assistant/infrastructure/media/audioplayers_preview_player.dart';
 import 'package:ai_assistant/infrastructure/media/record_audio_recorder_service.dart';
@@ -62,7 +61,8 @@ final modelSessionProvider = FutureProvider.autoDispose<GemmaService>((
       if (functionCalling && memoryEnabled) ...ToolRegistry.memoryTools,
     ];
 
-    // Compose the system instruction (T023, data-model §4):
+    // Compose the system instruction (T023, data-model §4) via the shared helper (F3 — one
+    // composition site shared with both controllers' _refreshSession):
     //   • factsBlock: the id-prefixed category-ordered block, or null when memory is off.
     //   • memoryCapture: true only when the model can call tools AND memory is on (R5 capture
     //     instruction is the reliability lever; ~86 tokens; accounted in ContextAssembler).
@@ -70,13 +70,10 @@ final modelSessionProvider = FutureProvider.autoDispose<GemmaService>((
     //     instruction (ToolRegistry.systemInstruction, 004 R6).
     //   • compose() returns null when all parts are absent → byte-parity guarantee 29.
     final activeFacts = await ref.read(memoryRepositoryProvider).listActive();
-    final factsBlock = memoryEnabled
-        ? FactsBlockComposer.compose(activeFacts)
-        : null;
-    final systemInstruction = SystemInstructionComposer.compose(
-      factsBlock: factsBlock,
-      memoryCapture: functionCalling && memoryEnabled,
-      deviceTools: functionCalling,
+    final systemInstruction = composeSessionInstruction(
+      caps: caps,
+      memoryEnabled: memoryEnabled,
+      activeFacts: activeFacts,
     );
 
     await gemma.loadModel(

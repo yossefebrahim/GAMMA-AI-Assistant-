@@ -1,10 +1,7 @@
-import 'package:ai_assistant/core/memory/facts_block_composer.dart';
-import 'package:ai_assistant/core/memory/system_instruction_composer.dart';
 import 'package:ai_assistant/data/repositories/drift_memory_repository.dart';
 import 'package:ai_assistant/data/repositories/settings_repository.dart';
 import 'package:ai_assistant/domain/entities/memory.dart';
-import 'package:ai_assistant/domain/services/gemma_service.dart';
-import 'package:ai_assistant/infrastructure/gemma/flutter_gemma_service.dart';
+import 'package:ai_assistant/features/chat/session_instruction.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Settings-screen controller for durable memory (005, US3). Mirrors [SettingsController] in shape:
@@ -30,27 +27,8 @@ class MemoryController extends Notifier<void> {
   /// Called after toggling memory so the next conversation reflects the new setting (FR-014).
   /// If the model is not loaded yet (cold start, or between sessions) this is a no-op: the
   /// instruction will be composed fresh when the model loads (data-model §4 `loadModel`).
-  Future<void> _refreshSession() async {
-    final gemma = ref.read(gemmaServiceProvider);
-    if (!gemma.isLoaded) return;
-
-    final caps = gemma.capabilities;
-    final functionCalling = caps.functionCalling;
-    final memoryEnabled = ref.read(memoryEnabledProvider);
-
-    final activeFacts = await ref.read(memoryRepositoryProvider).listActive();
-    final factsBlock = memoryEnabled
-        ? FactsBlockComposer.compose(activeFacts)
-        : null;
-
-    final instruction = SystemInstructionComposer.compose(
-      factsBlock: factsBlock,
-      memoryCapture: functionCalling && memoryEnabled,
-      deviceTools: functionCalling,
-    );
-
-    await gemma.startSession(systemInstruction: instruction);
-  }
+  /// Delegates to the shared [refreshSessionInstruction] helper (F3 — one composition site).
+  Future<void> _refreshSession() => refreshSessionInstruction(ref);
 
   // ---------------------------------------------------------------------------
   // Repository mutations (add / edit / delete / clearAll)

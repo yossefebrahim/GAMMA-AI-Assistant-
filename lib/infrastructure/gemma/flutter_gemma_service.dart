@@ -160,27 +160,9 @@ class FlutterGemmaService implements GemmaService {
         );
       }
 
-      // Structural coupling (guarantee 18): tools and supportsFunctionCalls derive from
-      // `capabilities.functionCalling`. When off, the inputs are byte-identical to 003
-      // (guarantee 19 / 29): empty tools, flag false.
-      // The systemInstruction is now composed OUTSIDE the seam by SystemInstructionComposer
-      // (guarantee 26 / 005) and passed in — the seam simply forwards it verbatim. null ⇒ none.
-      final functionCalling = capabilities.functionCalling;
-      final pluginTools = functionCalling
-          ? [for (final spec in tools) _toPluginTool(spec)]
-          : const <Tool>[];
-      _supportsFunctionCalls = functionCalling;
-
-      _chat = await _model!.createChat(
-        modelType: ModelType.gemma4,
-        supportImage: capabilities.image,
-        supportAudio: capabilities.audio,
-        supportsFunctionCalls: functionCalling,
-        tools: pluginTools,
-        toolChoice: ToolChoice.auto,
-        systemInstruction: systemInstruction,
-        isThinking: false,
-      );
+      // Create the chat via the shared helper (F5): tools / supportsFunctionCalls / system
+      // instruction all derive from one source so they can never desync (guarantee 18 / 26 / 29).
+      _chat = await _createChat(capabilities, tools, systemInstruction);
       _capabilities = capabilities;
       _activeChatTools = tools;
       _activeChatCapabilities = capabilities;
@@ -214,19 +196,40 @@ class FlutterGemmaService implements GemmaService {
     _awaitingToolResult = false;
 
     // Recreate on the SAME loaded model with the SAME tools/capabilities and the new instruction
-    // (guarantee 27 — no model reload, no re-mmap).
-    final caps = _activeChatCapabilities;
-    final tools = _activeChatTools;
-    final functionCalling = caps.functionCalling;
+    // (guarantee 27 — no model reload, no re-mmap). If recreation throws (e.g. OOM), fall back to a
+    // full unload so the seam never reports `isLoaded == true` with a null chat (matches
+    // loadModel's honest-state contract): callers see an unloaded service and can reload.
+    try {
+      _chat = await _createChat(
+        _activeChatCapabilities,
+        _activeChatTools,
+        systemInstruction,
+      );
+    } catch (_) {
+      await close();
+      rethrow;
+    }
+  }
+
+  /// Create the native chat from [capabilities] + [tools] + [systemInstruction], setting
+  /// [_supportsFunctionCalls] from the same source so the leak filter / resume discipline can never
+  /// desync (guarantee 18). Shared verbatim by [loadModel] and [startSession] (F5 — one createChat
+  /// call site). The systemInstruction is composed OUTSIDE the seam (guarantee 26 / 005) and
+  /// forwarded as-is; null ⇒ none.
+  Future<InferenceChat> _createChat(
+    ModelCapabilities capabilities,
+    List<ToolSpec> tools,
+    String? systemInstruction,
+  ) async {
+    final functionCalling = capabilities.functionCalling;
     final pluginTools = functionCalling
         ? [for (final spec in tools) _toPluginTool(spec)]
         : const <Tool>[];
     _supportsFunctionCalls = functionCalling;
-
-    _chat = await _model!.createChat(
+    return _model!.createChat(
       modelType: ModelType.gemma4,
-      supportImage: caps.image,
-      supportAudio: caps.audio,
+      supportImage: capabilities.image,
+      supportAudio: capabilities.audio,
       supportsFunctionCalls: functionCalling,
       tools: pluginTools,
       toolChoice: ToolChoice.auto,

@@ -67,7 +67,7 @@ class SettingsScreen extends ConsumerWidget {
               child: const Text('delete'),
             ),
           ),
-          const Divider(height: 1),
+          const Divider(height: AppSpacing.hairline),
           const _SectionHeader(label: 'appearance'),
           for (final mode in AppThemeMode.values)
             ListTile(
@@ -83,7 +83,7 @@ class SettingsScreen extends ConsumerWidget {
               onTap: () =>
                   ref.read(settingsControllerProvider.notifier).setTheme(mode),
             ),
-          const Divider(height: 1),
+          const Divider(height: AppSpacing.hairline),
           const _SectionHeader(label: 'memory'),
           ListTile(
             key: memoryRowKey,

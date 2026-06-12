@@ -135,6 +135,7 @@ by the existing `ToolChip`. No new message kind. Chip states:
 |---|---|
 | remember success (created) | `TOOL · REMEMBER_FACT` + `remembered: <fact>` |
 | remember success (superseded) | `… · updated: <fact>` (reflects dedupe, §3) |
+| remember success (unchanged) | `… · noted: <fact>` (exact restatement — no new row, `updatedAt` refreshed, §3) |
 | forget success | `TOOL · FORGET_FACT` + `forgot #<id>` |
 | invalid args / unknown id / cap / disabled | error chip (sanctioned red) + honest reply |
 

@@ -33,9 +33,16 @@
 // The Phase 0 spike (`spike_memory_test.dart`, now removed per T002) was a throwaway
 // single-tool probe that directly imported flutter_gemma and produced SPIKE log lines.
 // This harness is the shipped pipeline gate:
-//   * it drives the FULLY WIRED app (no direct plugin import — Principle VII holds);
-//   * it uses the real `remember_fact`/`forget_fact` tool registry, dispatcher, and
-//     repository so the measurement is end-to-end, not synthetic;
+//   * it drives the plugin DIRECTLY (the `flutter_gemma` import below) and loads the
+//     model itself — spike-style, NOT through the `GemmaService` seam. That is a
+//     deliberate, scoped exception to Principle VII for this DEVICE-RELIABILITY gate:
+//     the measurement is the model's capture behavior under the real R5 instruction +
+//     tool schemas, and going through the full app/seam/Riverpod stack would add nothing
+//     to that signal while making a 35-min device drive far harder to author and debug.
+//     The shipped app code stays behind the seam — only this harness reaches past it.
+//   * it uses the real `remember_fact`/`forget_fact` tool schemas (mirrored inline) and
+//     the identical R5 capture instruction `SystemInstructionComposer` composes, so the
+//     measurement reflects what production sends the model;
 //   * it asserts the tuned R5 capture instruction meets SC-001 (≥75%) with 0 false
 //     positives and records every trial outcome in a grep-able `@@MEMORY@@` log line.
 //
@@ -111,7 +118,8 @@ const Tool _rememberFactTool = Tool(
     'properties': {
       'fact': {
         'type': 'string',
-        'description': 'Short canonical third-person statement, ≤ 80 characters.',
+        'description':
+            'Short canonical third-person statement, ≤ 80 characters.',
         'maxLength': 80,
       },
       'category': {
@@ -134,7 +142,8 @@ const Tool _forgetFactTool = Tool(
     'properties': {
       'id': {
         'type': 'integer',
-        'description': 'The id of the fact to remove (from the injected facts list).',
+        'description':
+            'The id of the fact to remove (from the injected facts list).',
         'minimum': 1,
       },
     },
@@ -181,7 +190,11 @@ const List<(String, String, String)> _trials = [
   ('fact', "i'm vegetarian", 'diet'),
 
   // work / stack
-  ('fact', 'i build Android apps with Flutter and Dart for a living', 'job-stack'),
+  (
+    'fact',
+    'i build Android apps with Flutter and Dart for a living',
+    'job-stack',
+  ),
   ('fact', 'i am a mobile developer', 'job-title'),
   ('fact', 'i have been coding for about 8 years', 'experience'),
   ('fact', 'i work for a startup in the fintech space', 'industry'),
@@ -196,20 +209,39 @@ const List<(String, String, String)> _trials = [
   // design + theme preferences
   ('fact', 'i prefer dark mode in every app', 'pref:theme'),
   ('fact', 'i want bullet-point summaries whenever possible', 'pref:format'),
-  ('fact', 'always include code examples in technical explanations', 'pref:code'),
+  (
+    'fact',
+    'always include code examples in technical explanations',
+    'pref:code',
+  ),
 
   // phrasings that vary from the spike (more indirect / conversational)
   ('fact', 'just so you know, english is my second language', 'language'),
-  ('fact', 'i have a peanut allergy, so food suggestions should account for that', 'health'),
+  (
+    'fact',
+    'i have a peanut allergy, so food suggestions should account for that',
+    'health',
+  ),
   ('fact', 'i tend to code late at night — after 10 PM usually', 'schedule'),
   ('fact', 'i commute by bicycle every day', 'commute'),
   ('fact', 'my main project is an on-device AI assistant', 'project'),
-  ('fact', "i'm a big fan of clean architecture and SOLID principles", 'philosophy'),
-  ('fact', 'i prefer short PR descriptions with a bullet-point summary', 'pref:pr'),
-  ('fact', "i'd like you to always remind me to test on a real device", 'pref:reminder'),
+  (
+    'fact',
+    "i'm a big fan of clean architecture and SOLID principles",
+    'philosophy',
+  ),
+  (
+    'fact',
+    'i prefer short PR descriptions with a bullet-point summary',
+    'pref:pr',
+  ),
+  (
+    'fact',
+    "i'd like you to always remind me to test on a real device",
+    'pref:reminder',
+  ),
 
   // ── SHOULD-NOT / no-fact prompts (10 prompts) ────────────────────────────
-
   ('junk', 'what is the capital of france?', 'trivia:geo'),
   ('junk', 'write a haiku about autumn rain', 'creative'),
   ('junk', 'what is 144 divided by 12?', 'math'),
@@ -224,7 +256,12 @@ const List<(String, String, String)> _trials = [
 
 // ── Valid category enum values (matches ToolRegistry + MemoryCategory) ────────
 
-const Set<String> _validCategories = {'identity', 'work', 'preferences', 'other'};
+const Set<String> _validCategories = {
+  'identity',
+  'work',
+  'preferences',
+  'other',
+};
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -242,11 +279,16 @@ const Set<String> _validCategories = {'identity', 'work', 'preferences', 'other'
   if (fact == null) return (false, 'missing required field: fact');
   if (category == null) return (false, 'missing required field: category');
   // Type + length checks.
-  if (fact is! String || fact.trim().isEmpty) return (false, 'fact must be a non-empty string');
-  if (fact.length > 80) return (false, 'fact exceeds 80 characters (got ${fact.length})');
+  if (fact is! String || fact.trim().isEmpty)
+    return (false, 'fact must be a non-empty string');
+  if (fact.length > 80)
+    return (false, 'fact exceeds 80 characters (got ${fact.length})');
   // Enum check.
   if (category is! String || !_validCategories.contains(category)) {
-    return (false, 'invalid category: $category (must be one of ${_validCategories.join(', ')})');
+    return (
+      false,
+      'invalid category: $category (must be one of ${_validCategories.join(', ')})',
+    );
   }
   return (true, null);
 }
@@ -261,7 +303,8 @@ const Set<String> _validCategories = {'identity', 'work', 'preferences', 'other'
   if (id == null) return (false, 'missing required field: id');
   // Integer or whole-valued double (004 dispatcher coercion — spike §3.2.3).
   final idVal = id is double ? id.toInt() : id;
-  if (idVal is! int || idVal < 1) return (false, 'id must be an integer ≥ 1 (got $id)');
+  if (idVal is! int || idVal < 1)
+    return (false, 'id must be an integer ≥ 1 (got $id)');
   return (true, null);
 }
 
@@ -305,14 +348,9 @@ void main() {
     final reserveTokens = _estimateMaxReserveTokens();
     // Log so the result is visible in CI and on-device drive output.
     // ignore: avoid_print
-    print('@@MEMORY@@ ${jsonEncode({
-          'stage': 'sc005-budget',
-          'estimatedReserveTokens': reserveTokens,
-          'hardCap': _reserveTokenBudgetHardCap,
-          'factsBlockMaxChars': _factsBlockMaxChars,
-          'captureInstructionTokens': _captureInstructionTokens,
-          'pass': reserveTokens <= _reserveTokenBudgetHardCap,
-        })}');
+    print(
+      '@@MEMORY@@ ${jsonEncode({'stage': 'sc005-budget', 'estimatedReserveTokens': reserveTokens, 'hardCap': _reserveTokenBudgetHardCap, 'factsBlockMaxChars': _factsBlockMaxChars, 'captureInstructionTokens': _captureInstructionTokens, 'pass': reserveTokens <= _reserveTokenBudgetHardCap})}',
+    );
     expect(
       reserveTokens,
       lessThanOrEqualTo(_reserveTokenBudgetHardCap),
@@ -325,7 +363,8 @@ void main() {
     expect(
       blockTokensEstimate,
       lessThanOrEqualTo((_factsBlockMaxChars / _charsPerToken).ceil()),
-      reason: '$_maxActiveFacts facts × $_tokensPerFact tok/fact should stay within the char cap',
+      reason:
+          '$_maxActiveFacts facts × $_tokensPerFact tok/fact should stay within the char cap',
     );
   });
 
@@ -343,32 +382,32 @@ void main() {
       void memLog(String stage, Map<String, Object?> data) {
         // @@MEMORY@@ prefix is the grep handle for post-processing.
         // ignore: avoid_print
-        print('@@MEMORY@@ ${jsonEncode({
-              'stage': stage,
-              'rssMb': (ProcessInfo.currentRss / (1024 * 1024)).round(),
-              'peakRssMb': (peakRss / (1024 * 1024)).round(),
-              ...data,
-            })}');
+        print(
+          '@@MEMORY@@ ${jsonEncode({'stage': stage, 'rssMb': (ProcessInfo.currentRss / (1024 * 1024)).round(), 'peakRssMb': (peakRss / (1024 * 1024)).round(), ...data})}',
+        );
       }
 
       /// Drains one model generation: collects text tokens and any function calls.
       /// On the gemma4 SDK path, the call event is the FINAL stream element (004 spike §1.3).
       /// A 120-second per-turn silence timeout prevents a screen-lock hang from stalling the run
       /// indefinitely (the 004 spike documented the run-1 hang; see memory.md hazard note).
-      Future<({
-        String text,
-        int? firstTokenMs,
-        int totalMs,
-        List<FunctionCallResponse> calls,
-      })> drain(InferenceChat chat) async {
+      Future<
+        ({
+          String text,
+          int? firstTokenMs,
+          int totalMs,
+          List<FunctionCallResponse> calls,
+        })
+      >
+      drain(InferenceChat chat) async {
         final sw = Stopwatch()..start();
         int? firstTokenMs;
         final textBuf = StringBuffer();
         final calls = <FunctionCallResponse>[];
         final stream = chat.generateChatResponseAsync().timeout(
-              const Duration(seconds: 120),
-              onTimeout: (sink) => sink.close(),
-            );
+          const Duration(seconds: 120),
+          onTimeout: (sink) => sink.close(),
+        );
         await for (final response in stream) {
           if (response is TextResponse) {
             firstTokenMs ??= sw.elapsedMilliseconds;
@@ -393,7 +432,8 @@ void main() {
       expect(
         File(modelPath).existsSync(),
         isTrue,
-        reason: 'model not found at $modelPath — run the app first to download it',
+        reason:
+            'model not found at $modelPath — run the app first to download it',
       );
 
       try {
@@ -472,7 +512,9 @@ void main() {
           String? argsError;
           if (firstCall != null) {
             if (toolName == 'remember_fact') {
-              (argsValid, argsError) = _validateRememberFactArgs(firstCall.args);
+              (argsValid, argsError) = _validateRememberFactArgs(
+                firstCall.args,
+              );
             } else if (toolName == 'forget_fact') {
               (argsValid, argsError) = _validateForgetFactArgs(firstCall.args);
             } else {
@@ -485,7 +527,8 @@ void main() {
           // Detect the raw-JSON leak (the 004 spike §1.3 hazard — should be suppressed by
           // LeakFilter in the shipped app, but the harness directly uses the plugin so we
           // measure it here as a secondary signal, not a gate criterion).
-          final leakedRawJson = gen.text.contains('tool_call') ||
+          final leakedRawJson =
+              gen.text.contains('tool_call') ||
               RegExp(r'\{\s*"(name|tool_calls)"\s*:').hasMatch(gen.text);
 
           final record = <String, Object?>{
@@ -499,8 +542,12 @@ void main() {
             'args': firstCall?.args,
             'argsValid': firstCall == null ? null : argsValid,
             'argsError': argsError,
-            'rememberedCorrectTool': firstCall == null ? null : rememberedCorrectTool,
-            'forgotInsteadOfRemembered': firstCall == null ? null : forgotInsteadOfRemembered,
+            'rememberedCorrectTool': firstCall == null
+                ? null
+                : rememberedCorrectTool,
+            'forgotInsteadOfRemembered': firstCall == null
+                ? null
+                : forgotInsteadOfRemembered,
             'preCallText': gen.text.trim(),
             'leakedRawJson': leakedRawJson,
             'firstTokenMs': gen.firstTokenMs,
@@ -517,39 +564,57 @@ void main() {
 
         // SC-001: capture rate on should-capture prompts.
         final capturedCount = factTrials
-            .where((r) =>
-                r['called'] == true &&
-                r['tool'] == 'remember_fact' &&
-                r['argsValid'] == true)
+            .where(
+              (r) =>
+                  r['called'] == true &&
+                  r['tool'] == 'remember_fact' &&
+                  r['argsValid'] == true,
+            )
             .length;
-        final missedCount = factTrials.where((r) => r['called'] == false).length;
+        final missedCount = factTrials
+            .where((r) => r['called'] == false)
+            .length;
         final captureRate = capturedCount / factTrials.length;
 
         // SC-002: false positives on should-not prompts.
-        final falsePositiveCount = junkTrials.where((r) => r['called'] == true).length;
+        final falsePositiveCount = junkTrials
+            .where((r) => r['called'] == true)
+            .length;
 
         // SC-003: wrong/hallucinated tools (called something other than the two declared).
         final hallucinatedTools = results
-            .where((r) =>
-                r['called'] == true &&
-                r['tool'] != 'remember_fact' &&
-                r['tool'] != 'forget_fact')
+            .where(
+              (r) =>
+                  r['called'] == true &&
+                  r['tool'] != 'remember_fact' &&
+                  r['tool'] != 'forget_fact',
+            )
             .map((r) => r['tool'])
             .toList();
 
         // Arg quality: fraction of calls with valid args.
         final allCalls = results.where((r) => r['called'] == true).toList();
-        final goodArgCount = allCalls.where((r) => r['argsValid'] == true).length;
-        final argQualityRate = allCalls.isEmpty ? 1.0 : goodArgCount / allCalls.length;
+        final goodArgCount = allCalls
+            .where((r) => r['argsValid'] == true)
+            .length;
+        final argQualityRate = allCalls.isEmpty
+            ? 1.0
+            : goodArgCount / allCalls.length;
 
         // Malformed-arg calls (wrong tool for context is a subset).
-        final malformedCount = allCalls.where((r) => r['argsValid'] == false).length;
+        final malformedCount = allCalls
+            .where((r) => r['argsValid'] == false)
+            .length;
 
         // Parallel / multi-call turns.
-        final parallelCallTurns = results.where((r) => (r['callCount'] as int? ?? 0) > 1).length;
+        final parallelCallTurns = results
+            .where((r) => (r['callCount'] as int? ?? 0) > 1)
+            .length;
 
         // Raw-JSON leak occurrences.
-        final leakCount = results.where((r) => r['leakedRawJson'] == true).length;
+        final leakCount = results
+            .where((r) => r['leakedRawJson'] == true)
+            .length;
 
         // Forget-fact called on a should-capture prompt (guessed-id hazard from spike §3.2.1).
         final forgotOnFactPromptCount = factTrials
@@ -577,7 +642,8 @@ void main() {
           'parallelCallTurns': parallelCallTurns,
           'rawJsonLeakCount': leakCount,
           // Overall gate
-          'overallGatePass': captureRate >= 0.75 &&
+          'overallGatePass':
+              captureRate >= 0.75 &&
               falsePositiveCount == 0 &&
               hallucinatedTools.isEmpty &&
               argQualityRate >= 0.90,
@@ -589,7 +655,8 @@ void main() {
         expect(
           captureRate,
           greaterThanOrEqualTo(0.75),
-          reason: 'capture rate ${(captureRate * 100).toStringAsFixed(1)}% '
+          reason:
+              'capture rate ${(captureRate * 100).toStringAsFixed(1)}% '
               '($capturedCount/${factTrials.length}) is below the 75% gate (SC-001). '
               'See @@MEMORY@@ trial lines for the specific misses.',
         );
@@ -598,7 +665,8 @@ void main() {
         expect(
           falsePositiveCount,
           equals(0),
-          reason: '$falsePositiveCount false-positive capture(s) on should-not prompts (SC-002). '
+          reason:
+              '$falsePositiveCount false-positive capture(s) on should-not prompts (SC-002). '
               'Check @@MEMORY@@ trial lines where bucket=junk and called=true.',
         );
 
@@ -606,7 +674,8 @@ void main() {
         expect(
           hallucinatedTools,
           isEmpty,
-          reason: 'hallucinated tools: $hallucinatedTools (SC-003 — only remember_fact and '
+          reason:
+              'hallucinated tools: $hallucinatedTools (SC-003 — only remember_fact and '
               'forget_fact are registered; any other name is a fabrication).',
         );
 
@@ -614,7 +683,8 @@ void main() {
         expect(
           argQualityRate,
           greaterThanOrEqualTo(0.90),
-          reason: 'arg quality ${(argQualityRate * 100).toStringAsFixed(1)}% '
+          reason:
+              'arg quality ${(argQualityRate * 100).toStringAsFixed(1)}% '
               '($goodArgCount/${allCalls.length}) is below the 90% gate. '
               'Malformed calls: $malformedCount.',
         );

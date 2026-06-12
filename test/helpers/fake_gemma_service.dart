@@ -31,6 +31,10 @@ class FakeGemmaService implements GemmaService {
   ModelCapabilities capabilitiesData;
 
   bool throwOnLoad = false;
+
+  /// 005 (F4): when true, [startSession] performs a full unload (mirrors the seam's failure
+  /// fallback: `close()` then rethrow) and throws, so a refresh-failure leaves `isLoaded == false`.
+  bool throwOnStartSession = false;
   bool throwImageProcessing = false;
   bool throwAudioProcessing = false;
   Object? scriptedStreamError;
@@ -140,6 +144,12 @@ class FakeGemmaService implements GemmaService {
     // Guarantee 27 (005): startSession before load is a programmer error.
     if (!_loaded) {
       throw StateError('startSession() called before a model was loaded');
+    }
+    // F4: a recreation failure unloads the service (honest state) and rethrows — mirrors the seam's
+    // close()-then-rethrow fallback so `isLoaded == false` after a failed refresh.
+    if (throwOnStartSession) {
+      await close();
+      throw const ModelLoadException('fake startSession failure');
     }
     lastStartSessionInstruction = systemInstruction;
     startSessionCount++;

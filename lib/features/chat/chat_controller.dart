@@ -3,8 +3,6 @@ import 'dart:io';
 
 import 'package:ai_assistant/core/audio_constants.dart';
 import 'package:ai_assistant/core/media_file_extension.dart';
-import 'package:ai_assistant/core/memory/facts_block_composer.dart';
-import 'package:ai_assistant/core/memory/system_instruction_composer.dart';
 import 'package:ai_assistant/core/tools/tool_registry.dart';
 import 'package:ai_assistant/data/audio/audio_file_store.dart';
 import 'package:ai_assistant/data/images/image_file_store.dart';
@@ -26,6 +24,7 @@ import 'package:ai_assistant/features/chat/attachment_controller.dart';
 import 'package:ai_assistant/features/chat/chat_providers.dart';
 import 'package:ai_assistant/features/chat/context_assembler.dart';
 import 'package:ai_assistant/features/chat/recording_controller.dart';
+import 'package:ai_assistant/features/chat/session_instruction.dart';
 import 'package:ai_assistant/features/chat/tool_handler_providers.dart';
 import 'package:ai_assistant/infrastructure/gemma/flutter_gemma_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -101,6 +100,9 @@ class ChatController extends Notifier<ChatState> {
     // chatControllerProvider.state.conversationId immediately after calling
     // openConversation see the new value without needing to await the Future.
     state = ChatState(conversationId: conversationId);
+    // Mirror the open conversation into the memory-provenance notifier so a `remember_fact`
+    // captured in this conversation records its sourceConversationId (F2 / contract guarantee 4).
+    ref.read(activeConversationIdProvider.notifier).set(conversationId);
     await ref.read(recordingControllerProvider.notifier).reset();
     await _refreshSession();
   }
@@ -108,25 +110,8 @@ class ChatController extends Notifier<ChatState> {
   /// Compose the current system instruction from live state and apply it to the chat session
   /// (data-model §4 session-boundary rule). No-op when no model is loaded (cold start / between
   /// sessions) — the instruction is composed fresh at [loadModel] time by the session provider.
-  Future<void> _refreshSession() async {
-    final gemma = ref.read(gemmaServiceProvider);
-    if (!gemma.isLoaded) return;
-
-    final caps = gemma.capabilities;
-    final memoryEnabled = ref.read(memoryEnabledProvider);
-    final activeFacts = await ref.read(memoryRepositoryProvider).listActive();
-    final factsBlock = memoryEnabled
-        ? FactsBlockComposer.compose(activeFacts)
-        : null;
-
-    final instruction = SystemInstructionComposer.compose(
-      factsBlock: factsBlock,
-      memoryCapture: caps.functionCalling && memoryEnabled,
-      deviceTools: caps.functionCalling,
-    );
-
-    await gemma.startSession(systemInstruction: instruction);
-  }
+  /// Delegates to the shared [refreshSessionInstruction] helper (F3 — one composition site).
+  Future<void> _refreshSession() => refreshSessionInstruction(ref);
 
   /// Send a turn (FR-012). [text] may be empty when an [image] or [audio] clip is attached
   /// (FR-004); at most one of the two is given (audio XOR image, 003 spec Q3 — enforced upstream
@@ -204,7 +189,13 @@ class ChatController extends Notifier<ChatState> {
     }
 
     var conversationId = state.conversationId;
-    conversationId ??= (await repo.createConversation()).id;
+    if (conversationId == null) {
+      // Lazy-create on first send of a fresh thread: the row didn't exist until now, so update the
+      // provenance notifier too or a first-message `remember_fact` would still capture a null id
+      // (F2 — the lazy-create gap the audit caught).
+      conversationId = (await repo.createConversation()).id;
+      ref.read(activeConversationIdProvider.notifier).set(conversationId);
+    }
 
     await repo.appendUserMessage(
       conversationId,
@@ -577,6 +568,20 @@ class ChatController extends Notifier<ChatState> {
     final reserveToolInstruction = ref
         .read(modelCapabilitiesProvider)
         .functionCalling;
+    // Reserve the memory budget too (T025): the facts block (~225 tok) when memory is on AND ≥1
+    // fact exists, and the capture instruction (~86 tok) when function calling AND memory are both
+    // active — mirroring SystemInstructionComposer.compose's gating so the injected block can never
+    // be crowded out by a long history.
+    //
+    // Session-boundary approximation: the reserve reflects CURRENT store state, while the injected
+    // block is fixed at session start. A fact added mid-session reserves before the block exists
+    // (conservative — harmless); facts cleared mid-session under-reserve for an already-injected
+    // block (rare window, corrected at the next openConversation). The alternative — snapshotting
+    // the composed-instruction flags at each startSession/loadModel site — was rejected for a
+    // ≤311-token edge case.
+    final memoryEnabled = ref.read(memoryEnabledProvider);
+    final hasFacts =
+        (await ref.read(memoryRepositoryProvider).activeCount()) > 0;
     return ref
         .read(contextAssemblerProvider)
         .assemble(
@@ -584,6 +589,9 @@ class ChatController extends Notifier<ChatState> {
           images: images,
           audio: audio,
           reserveToolInstruction: reserveToolInstruction,
+          reserveMemoryBlock: memoryEnabled && hasFacts,
+          reserveMemoryCaptureInstruction:
+              reserveToolInstruction && memoryEnabled,
         );
   }
 

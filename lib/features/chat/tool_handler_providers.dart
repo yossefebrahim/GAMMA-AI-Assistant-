@@ -137,10 +137,23 @@ class _NoSuchFactException implements Exception {
 
 /// The active conversation id for memory provenance (005). Defaults to null (no open conversation).
 ///
+/// A WRITABLE manual Notifier (house pattern) — NOT a plain `Provider`, which can only be set at
+/// container-creation time and so could never carry the live conversation id. `ChatController` calls
+/// [ActiveConversationId.set] whenever the open conversation changes (`openConversation`, and the
+/// lazy-create path in `send`) so the `remember_fact` handler reads the CURRENT id at dispatch time
+/// and persists it as [Memory.sourceConversationId] (contract guarantee 4 — provenance is injected
+/// by the framework, never a tool argument).
+///
 /// This provider exists to break a potential import cycle: `chat_controller.dart` imports THIS file
 /// (`tool_handler_providers.dart`), so this file cannot import `chat_controller.dart` in return.
-/// Instead, `chat_controller.dart` / `chat_providers.dart` can override this provider (or read it
-/// from the notifier's state) at runtime; tests override it with a fixed value to exercise the
-/// `remember_fact` handler without a full controller setup. The dependency flows one way:
-/// controller → handlers.
-final activeConversationIdProvider = Provider<int?>((ref) => null);
+/// The dependency flows one way: controller → handlers. Tests can drive it through a real
+/// `ProviderContainer` (set the id, then dispatch) or override it outright.
+class ActiveConversationId extends Notifier<int?> {
+  @override
+  int? build() => null;
+
+  void set(int? id) => state = id;
+}
+
+final activeConversationIdProvider =
+    NotifierProvider<ActiveConversationId, int?>(ActiveConversationId.new);
