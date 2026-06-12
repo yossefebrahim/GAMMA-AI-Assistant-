@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:ai_assistant/app/router.dart';
 import 'package:ai_assistant/app/theme/app_colors.dart';
 import 'package:ai_assistant/app/theme/app_spacing.dart';
@@ -25,7 +27,7 @@ class _DownloadScreenState extends ConsumerState<DownloadScreen> {
     super.initState();
     // Kick off the download once this screen mounts.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(downloadControllerProvider.notifier).start();
+      unawaited(ref.read(downloadControllerProvider.notifier).start());
     });
   }
 
@@ -125,6 +127,30 @@ class _DownloadScreenState extends ConsumerState<DownloadScreen> {
                   ),
                 ),
                 const SizedBox(height: AppSpacing.s12),
+                if (state.permissionBlocked) ...[
+                  SizedBox(
+                    height: AppSpacing.minTouchTarget,
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      onPressed: () => unawaited(
+                        ref
+                            .read(downloadControllerProvider.notifier)
+                            .openStorageSettings(),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: colors.textPrimary,
+                        side: BorderSide(color: colors.outline),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(
+                            AppSpacing.radiusControl,
+                          ),
+                        ),
+                      ),
+                      child: const Text('open settings'),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.s12),
+                ],
                 PrimaryButton(
                   label: 'retry',
                   onPressed: () =>

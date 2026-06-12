@@ -14,6 +14,16 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
 
+    <!-- The model (~2.4 GB) is stored in a PUBLIC shared-storage folder
+         (<root>/AiAssistant/models/, see ModelCatalog.publicAppDirectory) so it survives an APK
+         uninstall/reinstall instead of being wiped with app-private storage. Reading/writing a
+         non-media file there on Android 11+ requires "all files access" — requested once at
+         download time via permission_handler (Permission.manageExternalStorage), the user toggles
+         it in system settings. tools:ignore silences the scoped-storage lint: this is a deliberate
+         product decision (avoid re-downloading 2.4 GB on every reinstall), not an oversight. -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage"/>
+
     <!-- Image input (002): the camera capture path needs a runtime CAMERA grant, requested through
          MediaPermissionService (002 R3). The photo *library* path uses the Android Photo Picker,
          which is permissionless on modern Android — it grants per-image access to the single image

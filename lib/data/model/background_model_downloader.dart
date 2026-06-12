@@ -8,10 +8,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
 /// `background_downloader`-backed [ModelDownloader] (R2) — the ONLY file importing
-/// `background_downloader`. Downloads the ~2.4 GB model into app-private storage under an Android
-/// foreground service, reports percent + bytes ≥ 1×/sec, and guarantees a partial file is never
-/// exposed as installed: it writes to `*.part` and only atomic-renames to the final name on
-/// `TaskStatus.complete` (FR-007–FR-011). The only network call in the app (Principle I).
+/// `background_downloader`. Downloads the ~2.4 GB model under an Android foreground service,
+/// reports percent + bytes ≥ 1×/sec, and guarantees a partial file is never exposed as installed:
+/// it writes to `*.part` and only atomic-renames to the final name on `TaskStatus.complete`
+/// (FR-007–FR-011). The only network call in the app (Principle I).
+///
+/// **Persistence across uninstall:** on Android the model is stored in PUBLIC shared storage
+/// (`<root>/AiAssistant/models/`, see [ModelCatalog.publicAppDirectory]) — outside
+/// `/Android/data/<pkg>/`, so it is NOT deleted when the APK is uninstalled. Writing/reading it
+/// needs the "all files access" grant (gated by the caller via the permission seam before
+/// [download]). Off-Android (or if the public root can't be resolved) it falls back to app-private
+/// documents storage so tests and other platforms still work.
 class BackgroundModelDownloader implements ModelDownloader {
   /// Run under a foreground service for anything larger than this many MB (R2).
   static const int _foregroundThresholdMb = 256;
@@ -48,9 +55,26 @@ class BackgroundModelDownloader implements ModelDownloader {
     _configured = true;
   }
 
+  /// Directory the model file lives in: the public, uninstall-surviving folder on Android, or the
+  /// app-private documents dir as a fallback (off-Android / unresolvable public root).
   Future<Directory> _modelsDir() async {
-    final docs = await getApplicationDocumentsDirectory();
-    return Directory('${docs.path}/${ModelCatalog.directory}');
+    final publicRoot = await _publicAppDir();
+    final base = publicRoot ?? await getApplicationDocumentsDirectory();
+    return Directory('${base.path}/${ModelCatalog.directory}');
+  }
+
+  /// The app's PUBLIC top-level folder on shared storage (e.g. `/storage/emulated/0/AiAssistant`),
+  /// derived from the app-specific external dir by trimming `/Android/data/<pkg>/...`. This is the
+  /// part of external storage that survives an uninstall. Returns `null` off-Android or when the
+  /// path can't be derived, so the caller falls back to app-private storage.
+  Future<Directory?> _publicAppDir() async {
+    if (!Platform.isAndroid) return null;
+    final ext = await getExternalStorageDirectory();
+    if (ext == null) return null;
+    final marker = ext.path.indexOf('/Android/');
+    if (marker <= 0) return null;
+    final root = ext.path.substring(0, marker); // e.g. /storage/emulated/0
+    return Directory('$root/${ModelCatalog.publicAppDirectory}');
   }
 
   Future<File> _finalFile() async =>
@@ -96,11 +120,20 @@ class BackgroundModelDownloader implements ModelDownloader {
     Future<void> start() async {
       try {
         await _ensureConfigured();
+        // Resolve the (public, uninstall-surviving) models dir and ensure it exists — with
+        // BaseDirectory.root the downloader writes to an absolute path and won't create the tree.
+        final modelsDir = await _modelsDir();
+        await modelsDir.create(recursive: true);
         final task = DownloadTask(
           url: url,
           filename: ModelCatalog.partFileName,
-          baseDirectory: BaseDirectory.applicationDocuments,
-          directory: ModelCatalog.directory,
+          // BaseDirectory.root + an absolute directory (leading slash stripped) lets the file land
+          // in public shared storage outside /Android/data/<pkg>/. Resolves to exactly
+          // `${modelsDir.path}/${partFileName}`, matching _partFile()/_finalFile().
+          baseDirectory: BaseDirectory.root,
+          directory: modelsDir.path.startsWith('/')
+              ? modelsDir.path.substring(1)
+              : modelsDir.path,
           updates: Updates.statusAndProgress,
           allowPause: true,
           retries: 5,

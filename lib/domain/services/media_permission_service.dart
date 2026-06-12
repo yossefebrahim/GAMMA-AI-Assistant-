@@ -26,7 +26,18 @@ abstract interface class MediaPermissionService {
   /// app launch).
   Future<MediaPermissionStatus> requestMic();
 
+  /// Current "all files access" (`MANAGE_EXTERNAL_STORAGE`) status. Never prompts. Gates whether
+  /// the model can be downloaded to / read from the public, uninstall-surviving storage folder
+  /// (`ModelCatalog.publicAppDirectory`). Always `granted` off-Android.
+  Future<MediaPermissionStatus> storageStatus();
+
+  /// Prompt for "all files access". On Android 11+ this opens the system all-files-access settings
+  /// page and returns the resulting status when the user comes back. Invoked only from the model
+  /// download flow (request on first use, never at app launch), so the model file persists across
+  /// reinstalls.
+  Future<MediaPermissionStatus> requestStorage();
+
   /// Open the OS app-settings page so the user can change a permanently-denied permission
-  /// (FR-010). Shared by the camera and mic flows.
+  /// (FR-010). Shared by the camera, mic, and storage flows.
   Future<void> openSettings();
 }
