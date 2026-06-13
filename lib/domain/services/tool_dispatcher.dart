@@ -50,6 +50,16 @@ class ToolDispatcher {
       return ToolInvalidArgs(validation.reason);
     }
 
+    // Scheme-allowlist for `format: uri` properties (006 fetch_page, contracts/web_research_tools.md
+    // §SchemaValidator delta). `format: uri` only asserts structural validity (scheme + authority);
+    // the http/https allowlist is a SEPARATE step applied here so the two failure messages stay
+    // distinct ("not a valid URI" vs "scheme must be http or https"). Runs after schema validation
+    // passes, before the handler — a non-http(s) URL never reaches the network seam.
+    final schemeRejection = _checkUriSchemes(spec.parameters, coerced);
+    if (schemeRejection != null) {
+      return ToolInvalidArgs(schemeRejection);
+    }
+
     final handler = _handlers[name];
     if (handler == null) {
       // The registry declares this tool but no handler is bound — a wiring error, surfaced as a
@@ -66,6 +76,30 @@ class ToolDispatcher {
       // Typed outcomes only — never let a handler exception escape (guarantee 2).
       return ToolFailure(_reasonOf(error));
     }
+  }
+
+  /// Enforce the http/https scheme allowlist on any string property declared with `format: uri`.
+  /// Returns a plain-language rejection reason for the first offending property, or null if all
+  /// `format: uri` values use an allowed scheme. Only reached after schema validation has already
+  /// confirmed each such value is a structurally valid URI (parsable, scheme + authority present).
+  String? _checkUriSchemes(
+    Map<String, Object?> schema,
+    Map<String, Object?> args,
+  ) {
+    final properties =
+        (schema['properties'] as Map?)?.cast<String, Object?>() ??
+        const <String, Object?>{};
+    for (final entry in properties.entries) {
+      final propSchema = (entry.value as Map?)?.cast<String, Object?>();
+      if (propSchema?['format'] != 'uri') continue;
+      final value = args[entry.key];
+      if (value is! String) continue; // required/type already enforced upstream
+      final scheme = Uri.tryParse(value)?.scheme;
+      if (scheme != 'http' && scheme != 'https') {
+        return '${entry.key} scheme must be http or https';
+      }
+    }
+    return null;
   }
 
   Map<String, Object?> _coerceIntegerArgs(

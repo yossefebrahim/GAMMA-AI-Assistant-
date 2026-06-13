@@ -53,8 +53,26 @@ class $ConversationsTable extends Conversations
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _webAccessOverrideMeta = const VerificationMeta(
+    'webAccessOverride',
+  );
   @override
-  List<GeneratedColumn> get $columns => [id, title, createdAt, updatedAt];
+  late final GeneratedColumn<String> webAccessOverride =
+      GeneratedColumn<String>(
+        'web_access_override',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    title,
+    createdAt,
+    updatedAt,
+    webAccessOverride,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -92,6 +110,15 @@ class $ConversationsTable extends Conversations
     } else if (isInserting) {
       context.missing(_updatedAtMeta);
     }
+    if (data.containsKey('web_access_override')) {
+      context.handle(
+        _webAccessOverrideMeta,
+        webAccessOverride.isAcceptableOrUnknown(
+          data['web_access_override']!,
+          _webAccessOverrideMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -117,6 +144,10 @@ class $ConversationsTable extends Conversations
         DriftSqlType.dateTime,
         data['${effectivePrefix}updated_at'],
       )!,
+      webAccessOverride: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}web_access_override'],
+      ),
     );
   }
 
@@ -135,11 +166,18 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
 
   /// Primary sort key for the history list (most-recent first).
   final DateTime updatedAt;
+
+  /// Per-conversation web-access override (006, schema v6). NULL = inherit the global
+  /// `webAccessEnabled` setting; 'on' / 'off' force web tools on or off for this conversation
+  /// (FR-007, three-state, data-model §1). Added by the v5→v6 migration as nullable, so existing
+  /// rows stay valid with NULL (= inherit).
+  final String? webAccessOverride;
   const ConversationRow({
     required this.id,
     this.title,
     required this.createdAt,
     required this.updatedAt,
+    this.webAccessOverride,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -150,6 +188,9 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
     }
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
+    if (!nullToAbsent || webAccessOverride != null) {
+      map['web_access_override'] = Variable<String>(webAccessOverride);
+    }
     return map;
   }
 
@@ -161,6 +202,9 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
           : Value(title),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
+      webAccessOverride: webAccessOverride == null && nullToAbsent
+          ? const Value.absent()
+          : Value(webAccessOverride),
     );
   }
 
@@ -174,6 +218,9 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
       title: serializer.fromJson<String?>(json['title']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      webAccessOverride: serializer.fromJson<String?>(
+        json['webAccessOverride'],
+      ),
     );
   }
   @override
@@ -184,6 +231,7 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
       'title': serializer.toJson<String?>(title),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'webAccessOverride': serializer.toJson<String?>(webAccessOverride),
     };
   }
 
@@ -192,11 +240,15 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
     Value<String?> title = const Value.absent(),
     DateTime? createdAt,
     DateTime? updatedAt,
+    Value<String?> webAccessOverride = const Value.absent(),
   }) => ConversationRow(
     id: id ?? this.id,
     title: title.present ? title.value : this.title,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
+    webAccessOverride: webAccessOverride.present
+        ? webAccessOverride.value
+        : this.webAccessOverride,
   );
   ConversationRow copyWithCompanion(ConversationsCompanion data) {
     return ConversationRow(
@@ -204,6 +256,9 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
       title: data.title.present ? data.title.value : this.title,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      webAccessOverride: data.webAccessOverride.present
+          ? data.webAccessOverride.value
+          : this.webAccessOverride,
     );
   }
 
@@ -213,13 +268,15 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
           ..write('id: $id, ')
           ..write('title: $title, ')
           ..write('createdAt: $createdAt, ')
-          ..write('updatedAt: $updatedAt')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('webAccessOverride: $webAccessOverride')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, title, createdAt, updatedAt);
+  int get hashCode =>
+      Object.hash(id, title, createdAt, updatedAt, webAccessOverride);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -227,7 +284,8 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
           other.id == this.id &&
           other.title == this.title &&
           other.createdAt == this.createdAt &&
-          other.updatedAt == this.updatedAt);
+          other.updatedAt == this.updatedAt &&
+          other.webAccessOverride == this.webAccessOverride);
 }
 
 class ConversationsCompanion extends UpdateCompanion<ConversationRow> {
@@ -235,17 +293,20 @@ class ConversationsCompanion extends UpdateCompanion<ConversationRow> {
   final Value<String?> title;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
+  final Value<String?> webAccessOverride;
   const ConversationsCompanion({
     this.id = const Value.absent(),
     this.title = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
+    this.webAccessOverride = const Value.absent(),
   });
   ConversationsCompanion.insert({
     this.id = const Value.absent(),
     this.title = const Value.absent(),
     required DateTime createdAt,
     required DateTime updatedAt,
+    this.webAccessOverride = const Value.absent(),
   }) : createdAt = Value(createdAt),
        updatedAt = Value(updatedAt);
   static Insertable<ConversationRow> custom({
@@ -253,12 +314,14 @@ class ConversationsCompanion extends UpdateCompanion<ConversationRow> {
     Expression<String>? title,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
+    Expression<String>? webAccessOverride,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (title != null) 'title': title,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
+      if (webAccessOverride != null) 'web_access_override': webAccessOverride,
     });
   }
 
@@ -267,12 +330,14 @@ class ConversationsCompanion extends UpdateCompanion<ConversationRow> {
     Value<String?>? title,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
+    Value<String?>? webAccessOverride,
   }) {
     return ConversationsCompanion(
       id: id ?? this.id,
       title: title ?? this.title,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      webAccessOverride: webAccessOverride ?? this.webAccessOverride,
     );
   }
 
@@ -291,6 +356,9 @@ class ConversationsCompanion extends UpdateCompanion<ConversationRow> {
     if (updatedAt.present) {
       map['updated_at'] = Variable<DateTime>(updatedAt.value);
     }
+    if (webAccessOverride.present) {
+      map['web_access_override'] = Variable<String>(webAccessOverride.value);
+    }
     return map;
   }
 
@@ -300,7 +368,8 @@ class ConversationsCompanion extends UpdateCompanion<ConversationRow> {
           ..write('id: $id, ')
           ..write('title: $title, ')
           ..write('createdAt: $createdAt, ')
-          ..write('updatedAt: $updatedAt')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('webAccessOverride: $webAccessOverride')
           ..write(')'))
         .toString();
   }
@@ -1636,12 +1705,28 @@ class $AppSettingsTableTable extends AppSettingsTable
     ),
     defaultValue: const Constant(true),
   );
+  static const VerificationMeta _webAccessEnabledMeta = const VerificationMeta(
+    'webAccessEnabled',
+  );
+  @override
+  late final GeneratedColumn<bool> webAccessEnabled = GeneratedColumn<bool>(
+    'web_access_enabled',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("web_access_enabled" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
     themeMode,
     licenseAcknowledgedAt,
     memoryEnabled,
+    webAccessEnabled,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1684,6 +1769,15 @@ class $AppSettingsTableTable extends AppSettingsTable
         ),
       );
     }
+    if (data.containsKey('web_access_enabled')) {
+      context.handle(
+        _webAccessEnabledMeta,
+        webAccessEnabled.isAcceptableOrUnknown(
+          data['web_access_enabled']!,
+          _webAccessEnabledMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -1709,6 +1803,10 @@ class $AppSettingsTableTable extends AppSettingsTable
         DriftSqlType.bool,
         data['${effectivePrefix}memory_enabled'],
       )!,
+      webAccessEnabled: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}web_access_enabled'],
+      )!,
     );
   }
 
@@ -1730,11 +1828,18 @@ class AppSettingsRow extends DataClass implements Insertable<AppSettingsRow> {
   /// facts are neither captured nor injected (management still works, FR-016). Added by the v4→v5
   /// migration with a default of 1 so the existing single row stays valid (data-model §2).
   final bool memoryEnabled;
+
+  /// Whether web research tools are globally enabled (006, schema v6). Default **false** (off by
+  /// default — SC-001, Decision 1); individual conversations may override via
+  /// [Conversations.webAccessOverride]. Added by the v5→v6 migration with DEFAULT 0 so the
+  /// existing single row stays valid (data-model §2).
+  final bool webAccessEnabled;
   const AppSettingsRow({
     required this.id,
     required this.themeMode,
     this.licenseAcknowledgedAt,
     required this.memoryEnabled,
+    required this.webAccessEnabled,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1747,6 +1852,7 @@ class AppSettingsRow extends DataClass implements Insertable<AppSettingsRow> {
       );
     }
     map['memory_enabled'] = Variable<bool>(memoryEnabled);
+    map['web_access_enabled'] = Variable<bool>(webAccessEnabled);
     return map;
   }
 
@@ -1758,6 +1864,7 @@ class AppSettingsRow extends DataClass implements Insertable<AppSettingsRow> {
           ? const Value.absent()
           : Value(licenseAcknowledgedAt),
       memoryEnabled: Value(memoryEnabled),
+      webAccessEnabled: Value(webAccessEnabled),
     );
   }
 
@@ -1773,6 +1880,7 @@ class AppSettingsRow extends DataClass implements Insertable<AppSettingsRow> {
         json['licenseAcknowledgedAt'],
       ),
       memoryEnabled: serializer.fromJson<bool>(json['memoryEnabled']),
+      webAccessEnabled: serializer.fromJson<bool>(json['webAccessEnabled']),
     );
   }
   @override
@@ -1785,6 +1893,7 @@ class AppSettingsRow extends DataClass implements Insertable<AppSettingsRow> {
         licenseAcknowledgedAt,
       ),
       'memoryEnabled': serializer.toJson<bool>(memoryEnabled),
+      'webAccessEnabled': serializer.toJson<bool>(webAccessEnabled),
     };
   }
 
@@ -1793,6 +1902,7 @@ class AppSettingsRow extends DataClass implements Insertable<AppSettingsRow> {
     String? themeMode,
     Value<DateTime?> licenseAcknowledgedAt = const Value.absent(),
     bool? memoryEnabled,
+    bool? webAccessEnabled,
   }) => AppSettingsRow(
     id: id ?? this.id,
     themeMode: themeMode ?? this.themeMode,
@@ -1800,6 +1910,7 @@ class AppSettingsRow extends DataClass implements Insertable<AppSettingsRow> {
         ? licenseAcknowledgedAt.value
         : this.licenseAcknowledgedAt,
     memoryEnabled: memoryEnabled ?? this.memoryEnabled,
+    webAccessEnabled: webAccessEnabled ?? this.webAccessEnabled,
   );
   AppSettingsRow copyWithCompanion(AppSettingsTableCompanion data) {
     return AppSettingsRow(
@@ -1811,6 +1922,9 @@ class AppSettingsRow extends DataClass implements Insertable<AppSettingsRow> {
       memoryEnabled: data.memoryEnabled.present
           ? data.memoryEnabled.value
           : this.memoryEnabled,
+      webAccessEnabled: data.webAccessEnabled.present
+          ? data.webAccessEnabled.value
+          : this.webAccessEnabled,
     );
   }
 
@@ -1820,14 +1934,20 @@ class AppSettingsRow extends DataClass implements Insertable<AppSettingsRow> {
           ..write('id: $id, ')
           ..write('themeMode: $themeMode, ')
           ..write('licenseAcknowledgedAt: $licenseAcknowledgedAt, ')
-          ..write('memoryEnabled: $memoryEnabled')
+          ..write('memoryEnabled: $memoryEnabled, ')
+          ..write('webAccessEnabled: $webAccessEnabled')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, themeMode, licenseAcknowledgedAt, memoryEnabled);
+  int get hashCode => Object.hash(
+    id,
+    themeMode,
+    licenseAcknowledgedAt,
+    memoryEnabled,
+    webAccessEnabled,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1835,7 +1955,8 @@ class AppSettingsRow extends DataClass implements Insertable<AppSettingsRow> {
           other.id == this.id &&
           other.themeMode == this.themeMode &&
           other.licenseAcknowledgedAt == this.licenseAcknowledgedAt &&
-          other.memoryEnabled == this.memoryEnabled);
+          other.memoryEnabled == this.memoryEnabled &&
+          other.webAccessEnabled == this.webAccessEnabled);
 }
 
 class AppSettingsTableCompanion extends UpdateCompanion<AppSettingsRow> {
@@ -1843,23 +1964,27 @@ class AppSettingsTableCompanion extends UpdateCompanion<AppSettingsRow> {
   final Value<String> themeMode;
   final Value<DateTime?> licenseAcknowledgedAt;
   final Value<bool> memoryEnabled;
+  final Value<bool> webAccessEnabled;
   const AppSettingsTableCompanion({
     this.id = const Value.absent(),
     this.themeMode = const Value.absent(),
     this.licenseAcknowledgedAt = const Value.absent(),
     this.memoryEnabled = const Value.absent(),
+    this.webAccessEnabled = const Value.absent(),
   });
   AppSettingsTableCompanion.insert({
     this.id = const Value.absent(),
     required String themeMode,
     this.licenseAcknowledgedAt = const Value.absent(),
     this.memoryEnabled = const Value.absent(),
+    this.webAccessEnabled = const Value.absent(),
   }) : themeMode = Value(themeMode);
   static Insertable<AppSettingsRow> custom({
     Expression<int>? id,
     Expression<String>? themeMode,
     Expression<DateTime>? licenseAcknowledgedAt,
     Expression<bool>? memoryEnabled,
+    Expression<bool>? webAccessEnabled,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1867,6 +1992,7 @@ class AppSettingsTableCompanion extends UpdateCompanion<AppSettingsRow> {
       if (licenseAcknowledgedAt != null)
         'license_acknowledged_at': licenseAcknowledgedAt,
       if (memoryEnabled != null) 'memory_enabled': memoryEnabled,
+      if (webAccessEnabled != null) 'web_access_enabled': webAccessEnabled,
     });
   }
 
@@ -1875,6 +2001,7 @@ class AppSettingsTableCompanion extends UpdateCompanion<AppSettingsRow> {
     Value<String>? themeMode,
     Value<DateTime?>? licenseAcknowledgedAt,
     Value<bool>? memoryEnabled,
+    Value<bool>? webAccessEnabled,
   }) {
     return AppSettingsTableCompanion(
       id: id ?? this.id,
@@ -1882,6 +2009,7 @@ class AppSettingsTableCompanion extends UpdateCompanion<AppSettingsRow> {
       licenseAcknowledgedAt:
           licenseAcknowledgedAt ?? this.licenseAcknowledgedAt,
       memoryEnabled: memoryEnabled ?? this.memoryEnabled,
+      webAccessEnabled: webAccessEnabled ?? this.webAccessEnabled,
     );
   }
 
@@ -1902,6 +2030,9 @@ class AppSettingsTableCompanion extends UpdateCompanion<AppSettingsRow> {
     if (memoryEnabled.present) {
       map['memory_enabled'] = Variable<bool>(memoryEnabled.value);
     }
+    if (webAccessEnabled.present) {
+      map['web_access_enabled'] = Variable<bool>(webAccessEnabled.value);
+    }
     return map;
   }
 
@@ -1911,7 +2042,8 @@ class AppSettingsTableCompanion extends UpdateCompanion<AppSettingsRow> {
           ..write('id: $id, ')
           ..write('themeMode: $themeMode, ')
           ..write('licenseAcknowledgedAt: $licenseAcknowledgedAt, ')
-          ..write('memoryEnabled: $memoryEnabled')
+          ..write('memoryEnabled: $memoryEnabled, ')
+          ..write('webAccessEnabled: $webAccessEnabled')
           ..write(')'))
         .toString();
   }
@@ -2453,6 +2585,7 @@ typedef $$ConversationsTableCreateCompanionBuilder =
       Value<String?> title,
       required DateTime createdAt,
       required DateTime updatedAt,
+      Value<String?> webAccessOverride,
     });
 typedef $$ConversationsTableUpdateCompanionBuilder =
     ConversationsCompanion Function({
@@ -2460,6 +2593,7 @@ typedef $$ConversationsTableUpdateCompanionBuilder =
       Value<String?> title,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
+      Value<String?> webAccessOverride,
     });
 
 final class $$ConversationsTableReferences
@@ -2542,6 +2676,11 @@ class $$ConversationsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get webAccessOverride => $composableBuilder(
+    column: $table.webAccessOverride,
+    builder: (column) => ColumnFilters(column),
+  );
+
   Expression<bool> messagesRefs(
     Expression<bool> Function($$MessagesTableFilterComposer f) f,
   ) {
@@ -2621,6 +2760,11 @@ class $$ConversationsTableOrderingComposer
     column: $table.updatedAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get webAccessOverride => $composableBuilder(
+    column: $table.webAccessOverride,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$ConversationsTableAnnotationComposer
@@ -2643,6 +2787,11 @@ class $$ConversationsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get webAccessOverride => $composableBuilder(
+    column: $table.webAccessOverride,
+    builder: (column) => column,
+  );
 
   Expression<T> messagesRefs<T extends Object>(
     Expression<T> Function($$MessagesTableAnnotationComposer a) f,
@@ -2727,11 +2876,13 @@ class $$ConversationsTableTableManager
                 Value<String?> title = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
+                Value<String?> webAccessOverride = const Value.absent(),
               }) => ConversationsCompanion(
                 id: id,
                 title: title,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
+                webAccessOverride: webAccessOverride,
               ),
           createCompanionCallback:
               ({
@@ -2739,11 +2890,13 @@ class $$ConversationsTableTableManager
                 Value<String?> title = const Value.absent(),
                 required DateTime createdAt,
                 required DateTime updatedAt,
+                Value<String?> webAccessOverride = const Value.absent(),
               }) => ConversationsCompanion.insert(
                 id: id,
                 title: title,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
+                webAccessOverride: webAccessOverride,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -3547,6 +3700,7 @@ typedef $$AppSettingsTableTableCreateCompanionBuilder =
       required String themeMode,
       Value<DateTime?> licenseAcknowledgedAt,
       Value<bool> memoryEnabled,
+      Value<bool> webAccessEnabled,
     });
 typedef $$AppSettingsTableTableUpdateCompanionBuilder =
     AppSettingsTableCompanion Function({
@@ -3554,6 +3708,7 @@ typedef $$AppSettingsTableTableUpdateCompanionBuilder =
       Value<String> themeMode,
       Value<DateTime?> licenseAcknowledgedAt,
       Value<bool> memoryEnabled,
+      Value<bool> webAccessEnabled,
     });
 
 class $$AppSettingsTableTableFilterComposer
@@ -3582,6 +3737,11 @@ class $$AppSettingsTableTableFilterComposer
 
   ColumnFilters<bool> get memoryEnabled => $composableBuilder(
     column: $table.memoryEnabled,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get webAccessEnabled => $composableBuilder(
+    column: $table.webAccessEnabled,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -3614,6 +3774,11 @@ class $$AppSettingsTableTableOrderingComposer
     column: $table.memoryEnabled,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<bool> get webAccessEnabled => $composableBuilder(
+    column: $table.webAccessEnabled,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$AppSettingsTableTableAnnotationComposer
@@ -3638,6 +3803,11 @@ class $$AppSettingsTableTableAnnotationComposer
 
   GeneratedColumn<bool> get memoryEnabled => $composableBuilder(
     column: $table.memoryEnabled,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get webAccessEnabled => $composableBuilder(
+    column: $table.webAccessEnabled,
     builder: (column) => column,
   );
 }
@@ -3683,11 +3853,13 @@ class $$AppSettingsTableTableTableManager
                 Value<String> themeMode = const Value.absent(),
                 Value<DateTime?> licenseAcknowledgedAt = const Value.absent(),
                 Value<bool> memoryEnabled = const Value.absent(),
+                Value<bool> webAccessEnabled = const Value.absent(),
               }) => AppSettingsTableCompanion(
                 id: id,
                 themeMode: themeMode,
                 licenseAcknowledgedAt: licenseAcknowledgedAt,
                 memoryEnabled: memoryEnabled,
+                webAccessEnabled: webAccessEnabled,
               ),
           createCompanionCallback:
               ({
@@ -3695,11 +3867,13 @@ class $$AppSettingsTableTableTableManager
                 required String themeMode,
                 Value<DateTime?> licenseAcknowledgedAt = const Value.absent(),
                 Value<bool> memoryEnabled = const Value.absent(),
+                Value<bool> webAccessEnabled = const Value.absent(),
               }) => AppSettingsTableCompanion.insert(
                 id: id,
                 themeMode: themeMode,
                 licenseAcknowledgedAt: licenseAcknowledgedAt,
                 memoryEnabled: memoryEnabled,
+                webAccessEnabled: webAccessEnabled,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))

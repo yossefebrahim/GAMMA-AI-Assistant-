@@ -36,6 +36,12 @@ class ContextAssembler {
   /// native `sizeInTokens`). Reserved when function calling AND memory are both active.
   static const int memoryCaptureTokens = 86;
 
+  /// Estimated cost of the web tool-use system instruction + the two web tool declarations
+  /// (`web_search` + `fetch_page`) — ~80 tokens (006, data-model §7, plan §Context budget).
+  /// Reserved when the web tools are declared (triple gate true) so the injected web tool-use
+  /// instruction can never be crowded out by a long history.
+  static const int webToolsReserveTokens = 80;
+
   final int maxContextTokens;
 
   /// Assemble the context from [priorMessages] — the conversation's turns BEFORE the current
@@ -52,6 +58,10 @@ class ContextAssembler {
   /// [memoryCaptureTokens] (~86) are additionally subtracted (R3/R4). Both default to false (memory
   /// off or empty → zero cost, byte-parity with 003/004).
   ///
+  /// When [reserveWebTools] is true (the web tools are declared — triple gate satisfied),
+  /// [webToolsReserveTokens] (~80) are subtracted so the web tool-use instruction is never crowded
+  /// out (006). Defaults to false (web off → zero cost, byte-parity with 003/004/005).
+  ///
   /// The assembler stays pure (no file I/O) — bytes are injected.
   List<ChatTurn> assemble(
     List<Message> priorMessages, {
@@ -60,6 +70,7 @@ class ContextAssembler {
     bool reserveToolInstruction = false,
     bool reserveMemoryBlock = false,
     bool reserveMemoryCaptureInstruction = false,
+    bool reserveWebTools = false,
   }) {
     final turns = <ChatTurn>[];
     for (final message in priorMessages) {
@@ -94,7 +105,8 @@ class ContextAssembler {
         maxContextTokens -
         (reserveToolInstruction ? toolInstructionTokens : 0) -
         (reserveMemoryBlock ? memoryBlockTokens : 0) -
-        (reserveMemoryCaptureInstruction ? memoryCaptureTokens : 0);
+        (reserveMemoryCaptureInstruction ? memoryCaptureTokens : 0) -
+        (reserveWebTools ? webToolsReserveTokens : 0);
     var totalTokens = turns.fold<int>(
       0,
       (sum, turn) => sum + _estimateTurnTokens(turn),

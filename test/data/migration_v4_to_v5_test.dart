@@ -119,7 +119,7 @@ void main() {
       reason: 'the v4→v5 migration defaults the existing row to memory on',
     );
 
-    expect(db.schemaVersion, 5);
+    expect(db.schemaVersion, 6);
   });
 
   test(

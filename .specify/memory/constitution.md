@@ -1,39 +1,53 @@
 <!--
 SYNC IMPACT REPORT
 ==================
-Version change: 1.1.0 → 1.2.0  [MINOR amendment]
-Bump rationale: Added a new core principle (X. Design Identity — Monochrome Minimalism) and
-reconciled the existing Dark-First & Accessible principle (VI) to defer to it. Adding a new
-principle is a MINOR bump per the versioning policy. No principle removed or redefined in a
-backward-incompatible way; VI retains its accessibility floor and now references X.
+Version change: 1.2.0 → 2.0.0  [MAJOR amendment]
+Bump rationale: Backward-incompatible redefinition of a NON-NEGOTIABLE principle.
+  Principle I ("Privacy Is the Product") previously stated an ABSOLUTE rule: the only
+  permitted outbound call was the one-time model download, and user content could never
+  leave the device under any circumstances. This amendment redefines that rule as
+  on-device-by-default with individually opt-in, off-by-default, visibly-indicated
+  egress for any feature that sends user content off-device. The discipline — opt-in,
+  visible at the moment it happens, graceful offline degradation, auditable, named
+  recipient, justified — remains NON-NEGOTIABLE; only the binary absolute is relaxed
+  to a governed opt-in model. This is a MAJOR bump per the versioning policy: it is a
+  backward-incompatible redefinition of a principle.
 
-Added principles:
-  - X. Design Identity — Monochrome Minimalism (Nothing-inspired: near-black canvas,
-       monochrome palette + single #D71921 accent, dot-matrix/grotesque/mono typography,
-       no gradients/shadows, Glyph-style motion, centralized tokens)
+Note on model downloads: model downloads have ALWAYS been network-based (bytes-in).
+  Principle I has never restricted bytes-in; it governs USER CONTENT egress (bytes-out).
+  This amendment makes that distinction explicit.
 
 Modified principles:
-  - VI. Dark-First & Accessible — now defers visual-language specifics to Principle X and
-       .specify/memory/design-system.md; accessibility floor remains mandatory and prevails
+  - I. Privacy Is the Product — redefined from absolute-no-egress to on-device-by-default
+       with governed opt-in egress; discipline (opt-in, off by default, visibly indicated,
+       graceful degradation, auditable, named recipient, justified) remains NON-NEGOTIABLE.
+  - II. Offline-First — light reconciliation: explicitly states opt-in network features
+       are enhancements that degrade gracefully, never prerequisites; "app never breaks
+       offline" language made explicit.
 
-Modified sections: none
+Modified sections:
+  - Technology & Platform Constraints → Networking bullet: now reflects (a) one-time
+       model download and (b) explicitly opt-in, off-by-default features that send user
+       content off-device under the Principle I safeguards.
+  - Development Workflow → Privacy gate: content-bearing calls now permitted ONLY when
+       behind an opt-in toggle (off by default), visibly indicated at call time, offline-
+       degrading, named-recipient, and auditable; all other calls must still carry no
+       user content.
+
 Removed sections: none
 
 Templates requiring updates:
-  - .specify/templates/plan-template.md          ✅ Constitution Check gate resolves against
-       this file at plan time; no edit required (will now also gate on Principle X / tokens).
+  - .specify/templates/plan-template.md          ✅ no structural edit needed — its
+       Constitution Check section holds only generic placeholder text and resolves the
+       gates dynamically from this constitution file at plan time, so the new opt-in
+       egress safeguards (off by default, visibly indicated, offline-degrading, named
+       recipient, auditable) are gated automatically without editing the template.
   - .specify/templates/spec-template.md          ✅ no change required
   - .specify/templates/tasks-template.md         ✅ no change required
-  - CLAUDE.md / README.md                         ✅ no hardcoded design refs to update
+  - CLAUDE.md / README.md                         ✅ no hardcoded privacy refs to update;
+       the active feature (005-memory) is fully on-device and unaffected by this amendment.
 
 Deferred TODOs: none.
-
-Notes:
-  - .specify/memory/design-system.md EXISTS and already encodes this language (palette with
-       bg #000000 and accent #D71921, dot-matrix signature, flat/no-shadow, lowercase voice,
-       monospace metadata). It is the BINDING token source referenced by Principle X and §VI,
-       and that reference resolves. Keep the two in sync whenever either changes (palette,
-       type scale, motion, surface, token names).
 -->
 
 # On-Device Gemma Assistant Constitution
@@ -42,28 +56,39 @@ Notes:
 
 ### I. Privacy Is the Product (NON-NEGOTIABLE)
 
-All inference MUST run on-device. The ONLY permitted outbound network call is the
-one-time model download (including any license, manifest, or checksum fetch strictly
-required to perform that download). User content — prompts, generated responses, images,
-audio, and conversation metadata — MUST NEVER leave the device. Analytics, crash
-reporting, and telemetry MUST NOT capture conversation content; any telemetry MUST be
-opt-in and content-free. Every network-capable code path MUST be auditable and justified
-against this rule.
+All inference MUST run on-device. User content — prompts, generated responses, images,
+audio, and conversation metadata — MUST NOT leave the device by default. The one-time
+model download (including any license, manifest, or checksum fetch strictly required to
+perform that download) remains a permitted network call; it has always been network-based
+and is bytes-in, not user-content-out. Any feature that sends user content off-device
+MUST be individually opt-in, OFF by default, visibly indicated in the UI at the moment
+egress happens, and designed to degrade gracefully so the app never breaks offline. Every
+such path MUST be auditable, MUST name its recipient, and MUST be justified. Analytics,
+crash reporting, and telemetry MUST NOT capture conversation content; any telemetry MUST
+be opt-in and content-free. The discipline itself — opt-in, off by default, visible at
+the moment it happens, graceful offline degradation, auditable, named recipient, justified
+— is NON-NEGOTIABLE.
 
-**Rationale**: Privacy is this product's reason to exist. A single content-bearing
-network call invalidates the entire value proposition, so the constraint is absolute,
-not best-effort.
+**Rationale**: Privacy is this product's reason to exist. The governing principle is
+on-device by default: no user content leaves the device unless the user explicitly
+enables a specific, named, visibly-indicated feature that degrades gracefully without it.
+Model downloads have always been network-based (bytes-in); this principle governs user
+content egress (bytes-out). The discipline protecting user content is absolute — what
+changes is that a rigorously governed opt-in path is now permitted rather than prohibited,
+enabling future enhancements without compromising the core privacy guarantee.
 
 ### II. Offline-First
 
 Once a model is installed, every core feature MUST function with zero connectivity. Loss
 of connectivity MUST NEVER interrupt, corrupt, or terminate an active chat or generation.
-Features MUST NOT block on or degrade with network availability, the initial model
-download excepted. The app MUST be fully operable in airplane mode after setup.
+Core features MUST NOT block on or degrade with network availability, the initial model
+download excepted. Opt-in network features permitted under Principle I MUST degrade
+gracefully when offline — they are enhancements, never prerequisites, and their absence
+MUST NOT break the app. The app MUST be fully operable in airplane mode after setup.
 
 **Rationale**: Offline operation is the natural consequence of on-device inference and
-the reliability guarantee users depend on; connectivity must be an enhancement, never a
-prerequisite.
+the reliability guarantee users depend on. The app never breaks offline; connectivity
+must always be an enhancement, never a prerequisite.
 
 ### III. Capability-Driven UX
 
@@ -182,7 +207,10 @@ coherent and makes the identity enforceable in review rather than aspirational.
   Both variants expose identical capabilities (text, image, audio, function calling, thinking);
   tier selection is a catalog configuration, not an architectural branch.
 - **Device Baseline**: arm64-v8a with 8 GB RAM (Principle V).
-- **Networking**: restricted to the one-time model download only (Principle I).
+- **Networking**: restricted to (a) the one-time model download and (b) explicitly opt-in,
+  off-by-default features that send user content off-device under the Principle I safeguards
+  (opt-in, visibly indicated at the moment of egress, gracefully degrading offline, auditable,
+  named recipient, justified).
 
 Any deviation from this stack MUST be recorded as a constitution amendment with rationale.
 
@@ -194,14 +222,19 @@ Any deviation from this stack MUST be recorded as a constitution amendment with 
   the native plugin. Capability-gating logic (Principle III) MUST be unit-tested against
   representative capability data.
 - **Privacy gate**: every change introducing or modifying a network call MUST document the
-  call and demonstrate it carries no user content (Principle I).
+  call and demonstrate it carries no user content (Principle I) — OR, if it is a
+  content-bearing call, MUST demonstrate it is behind an opt-in toggle (off by default),
+  visibly indicated at call time, degrades gracefully offline, names its recipient, and is
+  auditable. A content-bearing call that does not meet all of these criteria MUST be rejected.
 - **Accessibility gate**: UI changes MUST be verified for contrast and touch-target
   compliance before merge (Principle VI).
 - **Resource gate**: any code that loads a model or opens a session MUST show its
   corresponding release path (Principle VIII).
 - **Constitution Check**: `/speckit-plan` MUST evaluate each feature against these principles
-  before Phase 0 research and re-check after Phase 1 design. Violations MUST be recorded in
-  the plan's Complexity Tracking table with justification.
+  before Phase 0 research and re-check after Phase 1 design. Features introducing opt-in
+  egress MUST additionally verify the Principle I safeguards (opt-in toggle off by default,
+  visible indication at egress time, offline degradation, named recipient, auditability).
+  Violations MUST be recorded in the plan's Complexity Tracking table with justification.
 
 ## Governance
 
@@ -224,4 +257,4 @@ Deviations MUST be justified in the plan's Complexity Tracking table; an unjusti
 violation MUST be rejected, or the constitution amended first. Runtime development guidance
 lives in `CLAUDE.md` and the active feature plan.
 
-**Version**: 1.2.0 | **Ratified**: 2026-06-07 | **Last Amended**: 2026-06-07
+**Version**: 2.0.0 | **Ratified**: 2026-06-07 | **Last Amended**: 2026-06-12

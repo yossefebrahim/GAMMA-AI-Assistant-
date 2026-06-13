@@ -32,7 +32,10 @@ final class InvalidT extends ValidationResult {
 ///  * primitive property types `string | integer | number | boolean`;
 ///  * `enum` (a closed list of allowed values) on a property;
 ///  * integer `minimum` / `maximum` bounds (inclusive);
-///  * string `maxLength` (inclusive upper bound on character count — R5 memory fact cap).
+///  * string `maxLength` (inclusive upper bound on character count — R5 memory fact cap);
+///  * string `format: uri` (006 T020 — validates with [Uri.tryParse] + hasScheme + hasAuthority;
+///    the scheme-allowlist check is a SEPARATE step applied by the dispatcher, NOT folded into
+///    the `format` keyword, so error messages are distinct).
 ///
 /// **Strict mode**: unknown argument keys are REJECTED (a hallucinated argument is a model error
 /// the chip should surface, not silently drop — R3). Anything in a *schema* outside this subset is
@@ -104,11 +107,33 @@ class SchemaValidator {
         if (value is! String) {
           return ValidationResult.invalid('argument $name must be a string');
         }
+        // `minLength` + the trim-empty guard (006, contracts/web_research_tools.md §STRICT, FR-031):
+        // an empty OR whitespace-only string fails as "<name> is empty". minLength is checked on the
+        // raw length; the trim guard additionally rejects whitespace-only values that pass minLength.
+        final minLength = propSchema['minLength'];
+        if ((minLength is int && value.length < minLength) ||
+            (minLength is int && value.trim().isEmpty)) {
+          return ValidationResult.invalid('$name is empty');
+        }
         final maxLength = propSchema['maxLength'];
         if (maxLength is int && value.length > maxLength) {
           return ValidationResult.invalid(
-            'argument $name exceeds $maxLength characters',
+            '$name too long — max $maxLength characters',
           );
+        }
+        // format: uri — validates structural URI validity (scheme + authority present).
+        // The scheme-allowlist (http/https) is a SEPARATE check applied downstream by the
+        // dispatcher; this keyword only asserts parsability + scheme + authority so that the
+        // two failure messages remain distinct ("not a valid URI" vs "scheme must be http or
+        // https") — contracts/web_research_tools.md §SchemaValidator delta.
+        final format = propSchema['format'];
+        if (format == 'uri') {
+          final parsed = Uri.tryParse(value);
+          if (parsed == null || !parsed.hasScheme || !parsed.hasAuthority) {
+            return ValidationResult.invalid(
+              'argument $name is not a valid URI',
+            );
+          }
         }
       case 'boolean':
         if (value is! bool) {

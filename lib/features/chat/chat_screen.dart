@@ -4,11 +4,14 @@ import 'package:ai_assistant/app/theme/app_spacing.dart';
 import 'package:ai_assistant/app/theme/app_text.dart';
 import 'package:ai_assistant/app/widgets/dot_pulse.dart';
 import 'package:ai_assistant/core/model_catalog.dart';
+import 'package:ai_assistant/domain/entities/message.dart';
+import 'package:ai_assistant/domain/entities/tool_outcome.dart';
 import 'package:ai_assistant/features/chat/chat_controller.dart';
 import 'package:ai_assistant/features/chat/chat_providers.dart';
 import 'package:ai_assistant/features/chat/recording_controller.dart';
 import 'package:ai_assistant/features/chat/widgets/composer.dart';
 import 'package:ai_assistant/features/chat/widgets/message_bubble.dart';
+import 'package:ai_assistant/features/chat/widgets/source_url_chips.dart';
 import 'package:ai_assistant/features/chat/widgets/tool_chip.dart';
 import 'package:ai_assistant/infrastructure/gemma/flutter_gemma_service.dart';
 import 'package:flutter/material.dart';
@@ -282,6 +285,23 @@ class _MessageList extends ConsumerWidget {
   final ScrollController scroll;
   final VoidCallback onChanged;
 
+  /// The grounding `sourceUrls` from a successful web tool row (006 T033) — used to render the
+  /// tappable source chips beneath the reply that follows. Returns an empty list for any non-web,
+  /// non-success, or null message so the common (non-web) path renders unchanged.
+  static List<String> _webSourceUrls(Message? message) {
+    if (message == null || !message.isTool) return const [];
+    if (message.toolName != 'web_search' && message.toolName != 'fetch_page') {
+      return const [];
+    }
+    if (message.toolStatus != ToolCallStatus.success) return const [];
+    final raw = message.toolResult?['sourceUrls'];
+    if (raw is! List) return const [];
+    return [
+      for (final u in raw)
+        if (u is String && u.isNotEmpty) u,
+    ];
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final messages = ref.watch(chatMessagesProvider(conversationId));
@@ -302,9 +322,24 @@ class _MessageList extends ConsumerWidget {
             final message = list[index];
             // A tool invocation renders as a monochrome chip; everything else as a bubble (FR-010 —
             // chips render regardless of the active model's capabilities).
-            return message.isTool
-                ? ToolChip(message: message)
-                : MessageBubble(message: message);
+            if (message.isTool) return ToolChip(message: message);
+
+            // Source URL chips (006 T033, FR-013/SC-007): a web tool reply is the assistant bubble
+            // that immediately follows a successful web tool row carrying `sourceUrls`. Render the
+            // tappable source chips BENEATH that reply, sourced from the persisted tool row so they
+            // survive an app restart and render regardless of the current web toggle (SC-008).
+            final prior = index > 0 ? list[index - 1] : null;
+            final sourceUrls = _webSourceUrls(prior);
+            if (!message.isUser && sourceUrls.isNotEmpty) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  MessageBubble(message: message),
+                  SourceUrlChips(urls: sourceUrls),
+                ],
+              );
+            }
+            return MessageBubble(message: message);
           },
         );
       },

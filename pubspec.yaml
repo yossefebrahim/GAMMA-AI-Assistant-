@@ -81,6 +81,17 @@ dependencies:
   # App-private documents directory (R2/R3).
   path_provider: ^2.1.5
 
+  # Web-research feature (006) — Principle VII: all three packages are imported ONLY inside
+  # lib/infrastructure/network/ (enforced by tool/check_plugin_seam.sh + check_network_seam.sh).
+  #   * http: already transitive via background_downloader; pinned explicit for direct imports in
+  #     TavilyNetworkResearchService (006 R1).
+  #   * html: HTML parser used by HtmlExtractor to extract readable text from fetched pages (006 R2).
+  #   * flutter_secure_storage: encrypted Android Keystore-backed storage for the Tavily BYOK key
+  #     (006 R3, FR-003 — key never leaves the device).
+  http: ^1.6.0
+  html: ^0.15.6
+  flutter_secure_storage: ^10.3.1
+
   # Offline-bundled fonts; runtime fetching disabled in main.dart (R6).
   google_fonts: ^8.1.0
   gpt_markdown: ^1.1.7

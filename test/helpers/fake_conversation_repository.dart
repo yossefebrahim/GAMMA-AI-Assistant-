@@ -6,6 +6,7 @@ import 'package:ai_assistant/domain/entities/image_attachment.dart';
 import 'package:ai_assistant/domain/entities/message.dart';
 import 'package:ai_assistant/domain/entities/tool_outcome.dart';
 import 'package:ai_assistant/domain/entities/tool_spec.dart';
+import 'package:ai_assistant/domain/entities/web_access_override.dart';
 import 'package:ai_assistant/domain/repositories/conversation_repository.dart';
 
 /// Lightweight in-memory [ConversationRepository] for controller tests (contract:
@@ -313,6 +314,25 @@ class FakeConversationRepository implements ConversationRepository {
       _emitMessages(entry.key);
     }
     return swept;
+  }
+
+  @override
+  Future<WebAccessOverride?> readWebAccessOverride(int conversationId) async {
+    return _conversations[conversationId]?.webAccessOverride;
+  }
+
+  @override
+  Future<void> setWebAccessOverride(
+    int conversationId,
+    WebAccessOverride? override,
+  ) async {
+    final conversation = _conversations[conversationId];
+    if (conversation == null) return;
+    _conversations[conversationId] = conversation.copyWith(
+      webAccessOverride: override,
+      clearWebAccessOverride: override == null,
+    );
+    _emitConversations();
   }
 
   @override

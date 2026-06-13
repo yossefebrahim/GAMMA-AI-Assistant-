@@ -23,23 +23,34 @@ void main() {
     expect(ToolRegistry.memoryTools, hasLength(2));
   });
 
-  test('specs = deviceTools + memoryTools — exactly six entries', () {
-    expect(ToolRegistry.specs, hasLength(6));
-    expect(
-      ToolRegistry.specs,
-      containsAllInOrder([
-        ...ToolRegistry.deviceTools,
-        ...ToolRegistry.memoryTools,
-      ]),
-    );
+  test('webTools contains exactly two entries (006 scope)', () {
+    expect(ToolRegistry.webTools, hasLength(2));
   });
 
   test(
-    'deviceTools and memoryTools share no names (no cross-group duplicates)',
+    'specs = deviceTools + memoryTools + webTools — exactly eight entries',
+    () {
+      expect(ToolRegistry.specs, hasLength(8));
+      expect(
+        ToolRegistry.specs,
+        containsAllInOrder([
+          ...ToolRegistry.deviceTools,
+          ...ToolRegistry.memoryTools,
+          ...ToolRegistry.webTools,
+        ]),
+      );
+    },
+  );
+
+  test(
+    'deviceTools, memoryTools and webTools share no names (no cross-group duplicates)',
     () {
       final deviceNames = ToolRegistry.deviceTools.map((s) => s.name).toSet();
       final memoryNames = ToolRegistry.memoryTools.map((s) => s.name).toSet();
+      final webNames = ToolRegistry.webTools.map((s) => s.name).toSet();
       expect(deviceNames.intersection(memoryNames), isEmpty);
+      expect(deviceNames.intersection(webNames), isEmpty);
+      expect(memoryNames.intersection(webNames), isEmpty);
     },
   );
 
@@ -173,6 +184,14 @@ void main() {
     expect(ToolRegistry.byName('forget_fact')!.kind, ToolKind.stateChanging);
   });
 
+  test(
+    'invariant 4 — web tools are both stateChanging (006 — network egress)',
+    () {
+      expect(ToolRegistry.byName('web_search')!.kind, ToolKind.stateChanging);
+      expect(ToolRegistry.byName('fetch_page')!.kind, ToolKind.stateChanging);
+    },
+  );
+
   test('every tool has kind set (no null/default confusion)', () {
     for (final spec in ToolRegistry.specs) {
       // Dart enums are never null; this asserts the field is actually assigned.
@@ -184,7 +203,7 @@ void main() {
   // byName covers the full specs list
   // ---------------------------------------------------------------------------
 
-  test('byName resolves all six tools by name', () {
+  test('byName resolves all eight tools by name', () {
     for (final spec in ToolRegistry.specs) {
       expect(
         ToolRegistry.byName(spec.name),
@@ -304,6 +323,123 @@ void main() {
           reason: 'category "$cat" should be valid',
         );
       }
+    },
+  );
+
+  // ---------------------------------------------------------------------------
+  // 006 T021 — web tools (web_search + fetch_page)
+  // ---------------------------------------------------------------------------
+
+  test('web_search description mentions the "content" field (FR-010)', () {
+    final spec = ToolRegistry.byName('web_search')!;
+    expect(
+      spec.description,
+      contains('content'),
+      reason: 'web_search description must mention the content field (FR-010)',
+    );
+  });
+
+  test('web_search: resultCharBound is 2000', () {
+    final spec = ToolRegistry.byName('web_search')!;
+    expect(spec.resultCharBound, 2000);
+  });
+
+  test('fetch_page: resultCharBound is 2000', () {
+    final spec = ToolRegistry.byName('fetch_page')!;
+    expect(spec.resultCharBound, 2000);
+  });
+
+  test(
+    'web_search schema: query (string, minLength 1, maxLength 400, required)',
+    () {
+      final spec = ToolRegistry.byName('web_search')!;
+      final params = spec.parameters;
+      expect(params['required'], contains('query'));
+
+      final props = (params['properties'] as Map).cast<String, Object?>();
+      final querySchema = (props['query']! as Map).cast<String, Object?>();
+      expect(querySchema['type'], 'string');
+      expect(querySchema['minLength'], 1);
+      expect(querySchema['maxLength'], 400);
+    },
+  );
+
+  test('web_search schema: validator accepts a valid query', () {
+    final spec = ToolRegistry.byName('web_search')!;
+    expect(
+      validator.validate(spec.parameters, {
+        'query': 'flutter state management',
+      }).isValid,
+      isTrue,
+    );
+  });
+
+  test('web_search schema: validator rejects query over 400 chars', () {
+    final spec = ToolRegistry.byName('web_search')!;
+    final longQuery = 'q' * 401;
+    final result = validator.validate(spec.parameters, {'query': longQuery});
+    expect(result.isValid, isFalse);
+    expect((result as InvalidT).reason, contains('400'));
+  });
+
+  test(
+    'fetch_page schema: url (string, format:uri, maxLength 2048, required)',
+    () {
+      final spec = ToolRegistry.byName('fetch_page')!;
+      final params = spec.parameters;
+      expect(params['required'], contains('url'));
+
+      final props = (params['properties'] as Map).cast<String, Object?>();
+      final urlSchema = (props['url']! as Map).cast<String, Object?>();
+      expect(urlSchema['type'], 'string');
+      expect(urlSchema['format'], 'uri');
+      expect(urlSchema['maxLength'], 2048);
+    },
+  );
+
+  test('fetch_page schema: validator accepts a valid https URL', () {
+    final spec = ToolRegistry.byName('fetch_page')!;
+    expect(
+      validator.validate(spec.parameters, {
+        'url': 'https://flutter.dev/docs',
+      }).isValid,
+      isTrue,
+    );
+  });
+
+  test('fetch_page schema: validator rejects a non-URI string', () {
+    final spec = ToolRegistry.byName('fetch_page')!;
+    final result = validator.validate(spec.parameters, {'url': 'not a url'});
+    expect(result.isValid, isFalse);
+    expect((result as InvalidT).reason, contains('not a valid URI'));
+  });
+
+  test('fetch_page schema: validator rejects url over 2048 chars', () {
+    final spec = ToolRegistry.byName('fetch_page')!;
+    final longUrl = 'https://example.com/${'a' * 2030}';
+    final result = validator.validate(spec.parameters, {'url': longUrl});
+    expect(result.isValid, isFalse);
+    expect((result as InvalidT).reason, contains('2048'));
+  });
+
+  // ---------------------------------------------------------------------------
+  // 006 T021 — invariant 2 extended for format:uri property schema construct
+  // The existing invariant 2 test checks ['string','integer','number','boolean'] — web tools
+  // use format:uri on a string property, which is a supported string sub-keyword, not a type.
+  // This spot check verifies the format:uri property validates correctly in the invariant loop.
+  // ---------------------------------------------------------------------------
+
+  test(
+    'invariant 2 extended — fetch_page url property uses format:uri (string type, supported)',
+    () {
+      final spec = ToolRegistry.byName('fetch_page')!;
+      final props = (spec.parameters['properties'] as Map)
+          .cast<String, Object?>();
+      final urlSchema = (props['url']! as Map).cast<String, Object?>();
+      // type is 'string' — in the supported list.
+      expect(urlSchema['type'], 'string');
+      // format:uri is a sub-keyword of string, not the type itself.
+      expect(urlSchema['format'], 'uri');
     },
   );
 }

@@ -18,7 +18,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _open());
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   // Store DateTimes as ISO-8601 TEXT (UTC) instead of integer Unix *seconds* (drift's default).
   // This preserves sub-second precision so the history list orders correctly when conversations
@@ -62,6 +62,14 @@ class AppDatabase extends _$AppDatabase {
         await m.createTable(memories);
         await m.createIndex(idxMemoriesActive);
         await m.addColumn(appSettingsTable, appSettingsTable.memoryEnabled);
+      }
+      // v5 → v6 (006): add web_access_override to conversations and web_access_enabled to
+      // app_settings (additive only; v5 rows untouched — data-model §2). Existing conversations
+      // default to NULL (= inherit global), existing app_settings row defaults to false (web off).
+      // Fresh installs land on v6 directly via onCreate.
+      if (from < 6) {
+        await m.addColumn(conversations, conversations.webAccessOverride);
+        await m.addColumn(appSettingsTable, appSettingsTable.webAccessEnabled);
       }
     },
     beforeOpen: (details) async {

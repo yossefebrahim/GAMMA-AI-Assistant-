@@ -3,6 +3,7 @@ import 'package:ai_assistant/domain/entities/conversation.dart';
 import 'package:ai_assistant/domain/entities/image_attachment.dart';
 import 'package:ai_assistant/domain/entities/message.dart';
 import 'package:ai_assistant/domain/entities/tool_outcome.dart';
+import 'package:ai_assistant/domain/entities/web_access_override.dart';
 
 /// Abstraction over `drift` persistence (R3) — the only seam for conversation/message storage.
 ///
@@ -80,6 +81,19 @@ abstract interface class ConversationRepository {
   /// `streaming` finalization so reopened history never shows an in-flight chip. Returns the count
   /// swept.
   Future<int> sweepStaleToolInvocations();
+
+  /// Read the per-conversation web-access override (006, FR-007). Returns `null` (the `inherit`
+  /// state) when the conversation does not exist or stores NULL. Used by
+  /// `conversationWebOverrideProvider` to seed the per-conversation quick toggle.
+  Future<WebAccessOverride?> readWebAccessOverride(int conversationId);
+
+  /// Persist the per-conversation web-access override (006, FR-007). `null` writes NULL (inherit);
+  /// [WebAccessOverride.on] / [WebAccessOverride.off] write `'on'` / `'off'`. The controller calls
+  /// `GemmaService.startSession` with the recomputed tool list after persisting (FR-032).
+  Future<void> setWebAccessOverride(
+    int conversationId,
+    WebAccessOverride? override,
+  );
 
   /// Delete a conversation: removes its image AND audio files (FR-019; 003
   /// contracts/conversation_repository.md #3 — file cleanup happens BEFORE the cascading row

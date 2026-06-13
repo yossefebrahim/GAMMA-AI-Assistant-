@@ -1,14 +1,17 @@
 import 'package:ai_assistant/core/model_catalog.dart';
 import 'package:ai_assistant/core/tools/tool_registry.dart';
 import 'package:ai_assistant/data/model/background_model_downloader.dart';
+import 'package:ai_assistant/data/repositories/drift_conversation_repository.dart';
 import 'package:ai_assistant/data/repositories/drift_memory_repository.dart';
 import 'package:ai_assistant/data/repositories/settings_repository.dart';
 import 'package:ai_assistant/domain/entities/model_capabilities.dart';
 import 'package:ai_assistant/domain/entities/tool_spec.dart';
+import 'package:ai_assistant/domain/entities/web_access_override.dart';
 import 'package:ai_assistant/domain/services/audio_preview_player.dart';
 import 'package:ai_assistant/domain/services/audio_recorder_service.dart';
 import 'package:ai_assistant/domain/services/gemma_service.dart';
 import 'package:ai_assistant/features/chat/session_instruction.dart';
+import 'package:ai_assistant/features/chat/tool_handler_providers.dart';
 import 'package:ai_assistant/infrastructure/gemma/flutter_gemma_service.dart';
 import 'package:ai_assistant/infrastructure/media/audioplayers_preview_player.dart';
 import 'package:ai_assistant/infrastructure/media/record_audio_recorder_service.dart';
@@ -55,10 +58,29 @@ final modelSessionProvider = FutureProvider.autoDispose<GemmaService>((
     //   • deviceTools declared whenever functionCalling is on (004 guarantee 18 — structural
     //     coupling: passing tools without functionCalling throws StateError).
     //   • memoryTools additionally declared when functionCalling AND memoryEnabled (R6).
+    //   • webTools declared when functionCalling AND effectiveWebEnabled AND hasValidKey (T031 +
+    //     T045 triple gate — contracts/web_research_tools.md, FR-007). `effectiveWebEnabled` resolves
+    //     the GLOBAL `webAccessEnabled` through the OPEN conversation's three-state override
+    //     (inherit/on/off) so a per-conversation toggle genuinely adds/removes the web tools at the
+    //     next session recreation (ChatController.toggleWebAccess invalidates this provider).
+    //     Absent from the session if any condition is false — tools structurally absent, not refused
+    //     at runtime (SC-009/SC-010/SC-011).
     //   • flag-off → empty list → byte-parity with 003 (guarantee 19).
+    final globalWebEnabled = ref.read(webAccessEnabledProvider);
+    final activeConversationId = ref.read(activeConversationIdProvider);
+    final override = activeConversationId == null
+        ? null
+        : await ref
+              .read(conversationRepositoryProvider)
+              .readWebAccessOverride(activeConversationId);
+    final effectiveWebEnabled = (override ?? WebAccessOverride.inherit)
+        .effectiveWebEnabled(globalWebEnabled);
+    final hasValidKey = await ref.read(secureKeyStoreProvider).hasValidKey();
     final tools = <ToolSpec>[
       if (functionCalling) ...ToolRegistry.deviceTools,
       if (functionCalling && memoryEnabled) ...ToolRegistry.memoryTools,
+      if (functionCalling && effectiveWebEnabled && hasValidKey)
+        ...ToolRegistry.webTools,
     ];
 
     // Compose the system instruction (T023, data-model §4) via the shared helper (F3 — one
@@ -131,3 +153,17 @@ final modelSessionReadyProvider = Provider<bool>((ref) {
       .watch(modelSessionProvider)
       .maybeWhen(data: (gemma) => gemma.isLoaded, orElse: () => false);
 });
+
+/// The per-conversation web-access override (006 T031, data-model §6, FR-007) for a specific
+/// conversation id — a family provider over [ConversationRepository.readWebAccessOverride].
+///
+/// Returns `WebAccessOverride?` where `null` is the `inherit` state (the conversation defers to the
+/// global [webAccessEnabledProvider]). Seeds the per-conversation quick toggle (US3, T044); the
+/// triple gate in [modelSessionProvider] resolves the EFFECTIVE flag via
+/// [WebAccessOverride.effectiveWebEnabled] against the global setting. Overridable in tests.
+final conversationWebOverrideProvider = FutureProvider.autoDispose
+    .family<WebAccessOverride?, int>((ref, conversationId) async {
+      return ref
+          .read(conversationRepositoryProvider)
+          .readWebAccessOverride(conversationId);
+    });

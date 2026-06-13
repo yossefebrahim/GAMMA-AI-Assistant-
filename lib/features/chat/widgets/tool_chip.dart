@@ -33,6 +33,7 @@ class ToolChip extends StatelessWidget {
     final isRunning = status == ToolCallStatus.running;
 
     final name = message.toolName ?? 'tool';
+    final tag = _tagFor(name, message.toolArgs);
     final argsSummary = _argsSummary(message.toolArgs);
     // The result/status line: the persisted summary, or a spec word for transient/empty states.
     final line = switch (status) {
@@ -76,7 +77,7 @@ class ToolChip extends StatelessWidget {
               ],
               Flexible(
                 child: Text(
-                  AppText.spec('tool · $name'),
+                  tag,
                   key: ToolChip.tagKey,
                   style: theme.textTheme.labelSmall?.copyWith(
                     color: isError ? colors.accent : colors.textSecondary,
@@ -130,6 +131,27 @@ class ToolChip extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// The chip's mono tag. Web tools (006, FR-022 / Constitution Principle I) name the TRUE external
+  /// recipient of the egress instead of the generic `TOOL · <NAME>` prefix:
+  ///   • `web_search`  → `WEB_SEARCH · Tavily`  (the request goes to api.tavily.com)
+  ///   • `fetch_page`  → `FETCH_PAGE · <domain>` (the request goes DIRECTLY to the target site —
+  ///     `<domain>` is `Uri.parse(url).host`, NOT Tavily)
+  /// Device/memory tools (004/005) keep the generic `TOOL · <NAME>` tag.
+  String _tagFor(String name, Map<String, Object?>? args) {
+    switch (name) {
+      case 'web_search':
+        return '${AppText.spec(name)} · Tavily';
+      case 'fetch_page':
+        final url = args?['url'] as String?;
+        final host = url == null ? '' : (Uri.tryParse(url)?.host ?? '');
+        return host.isEmpty
+            ? AppText.spec(name)
+            : '${AppText.spec(name)} · $host';
+      default:
+        return AppText.spec('tool · $name');
+    }
   }
 
   /// Compact mono args summary (`section: battery`), or null when there are no args.
