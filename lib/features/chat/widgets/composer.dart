@@ -7,6 +7,7 @@ import 'package:ai_assistant/features/chat/recording_controller.dart';
 import 'package:ai_assistant/features/chat/widgets/attachment_preview.dart';
 import 'package:ai_assistant/features/chat/widgets/audio_chip.dart';
 import 'package:ai_assistant/features/chat/widgets/recording_indicator.dart';
+import 'package:ai_assistant/features/chat/widgets/web_toggle_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -395,6 +396,11 @@ class _ComposerState extends ConsumerState<Composer> {
           else
             Row(
               children: [
+                // Per-conversation web-access quick toggle (006 US3, T044/T045). Shown only when the
+                // active model can call tools — the same structural pre-condition the web triple gate
+                // needs; the three-state override controls whether the web tools are declared for the
+                // next turn (FR-008/FR-032).
+                if (capabilities.functionCalling) const WebToggleButton(),
                 // Capability-gated attach affordance (data-driven, never hardcoded — Principle III).
                 if (capabilities.image)
                   IconButton(

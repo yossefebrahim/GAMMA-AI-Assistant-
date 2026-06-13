@@ -1,16 +1,18 @@
 import 'package:ai_assistant/domain/entities/tool_spec.dart';
 
-/// The const, static six-tool registry (005 memory + 004 device tools; contract:
-/// tool_registry_dispatcher.md). Pure data — no plugin imports, no logic beyond [byName]. The seam
+/// The const, static eight-tool registry (006 web + 005 memory + 004 device tools; contract:
+/// web_research_tools.md). Pure data — no plugin imports, no logic beyond [byName]. The seam
 /// maps these to the plugin's `Tool` type when `capabilities.functionCalling` is on; the dispatcher
 /// validates args against the schemas.
 ///
 /// Invariants (proven by the registry-sanity test): names unique + `snake_case`, every
 /// `parameters` map self-validates against the [SchemaValidator] subset, descriptions non-empty,
-/// `kind` set on all six. Tools are split into three views:
+/// `kind` set on all eight. Tools are split into four views:
 ///  * [deviceTools] — the original four device/UI tools (004).
 ///  * [memoryTools] — the two memory capture tools (005); declared only when memoryEnabled.
-///  * [specs] — [deviceTools] + [memoryTools] — the full combined list (used by [byName]).
+///  * [webTools] — the two web research tools (006); declared only when the triple gate is true.
+///  * [specs] — [deviceTools] + [memoryTools] + [webTools] — the full combined list (used by
+///    [byName]).
 abstract final class ToolRegistry {
   /// The four device/UI tools from 004. Declared whenever `capabilities.functionCalling` is on.
   static const List<ToolSpec> deviceTools = <ToolSpec>[
@@ -151,12 +153,73 @@ abstract final class ToolRegistry {
     ),
   ];
 
-  /// Full combined list: [deviceTools] + [memoryTools]. Used by [byName] for lookups across all
-  /// declared tools. The session provider composes the subset that is actually declared to the
-  /// model (gated by capability flags — R6).
+  /// The two web research tools (006). Declared when `capabilities.functionCalling` is on AND
+  /// `SecureKeyStore.hasValidKey()` is true AND `effectiveWebAccess(conversation)` is true (the
+  /// triple gate — contracts/web_research_tools.md). `ToolKind.stateChanging` marks network egress
+  /// intent, consistent with the codebase convention (not app-state mutation per se).
+  static const List<ToolSpec> webTools = <ToolSpec>[
+    ToolSpec(
+      name: 'web_search',
+      description:
+          'Search the web via Tavily and return the top 3 results as '
+          '{title, url, content, score} objects. Use for current events, live '
+          'documentation, or any question that benefits from up-to-date sources. '
+          'Do NOT call for arithmetic, in-context questions, or anything answerable '
+          'from your own knowledge. One call per turn only.',
+      kind: ToolKind.stateChanging,
+      resultCharBound: 2000,
+      parameters: <String, Object?>{
+        'type': 'object',
+        'properties': <String, Object?>{
+          'query': <String, Object?>{
+            'type': 'string',
+            'description':
+                'The search query. Non-empty, ≤ 400 characters. Plain natural-language '
+                'question or keyword phrase.',
+            'minLength': 1,
+            'maxLength': 400,
+          },
+        },
+        'required': <String>['query'],
+        'additionalProperties': false,
+      },
+    ),
+    ToolSpec(
+      name: 'fetch_page',
+      description:
+          'Fetch a URL and return the readable extracted text. Use when the '
+          'user explicitly asks to read a specific page or when you need the full '
+          'article text from a URL already in context. The page is fetched DIRECTLY '
+          'from the target website (not via Tavily). One call per turn only. Do NOT '
+          'chain fetch_page immediately after web_search in the same turn.',
+      kind: ToolKind.stateChanging,
+      resultCharBound: 2000,
+      parameters: <String, Object?>{
+        'type': 'object',
+        'properties': <String, Object?>{
+          'url': <String, Object?>{
+            'type': 'string',
+            'description':
+                'The full URL to fetch. Must start with http:// or https://. '
+                'Must be a well-formed URL (scheme + host + optional path). '
+                'Maximum 2,048 characters.',
+            'format': 'uri',
+            'maxLength': 2048,
+          },
+        },
+        'required': <String>['url'],
+        'additionalProperties': false,
+      },
+    ),
+  ];
+
+  /// Full combined list: [deviceTools] + [memoryTools] + [webTools]. Used by [byName] for lookups
+  /// across all declared tools. The session provider composes the subset that is actually declared
+  /// to the model (gated by capability flags — contracts/web_research_tools.md).
   static const List<ToolSpec> specs = <ToolSpec>[
     ...deviceTools,
     ...memoryTools,
+    ...webTools,
   ];
 
   /// Resolve a (possibly hallucinated) tool name to its spec, or null if unknown (the dispatcher

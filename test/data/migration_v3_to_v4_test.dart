@@ -116,7 +116,7 @@ void main() {
       );
 
       expect((await db.select(db.conversations).get()).single.title, 'v3 chat');
-      expect(db.schemaVersion, 5);
+      expect(db.schemaVersion, 6);
     },
   );
 

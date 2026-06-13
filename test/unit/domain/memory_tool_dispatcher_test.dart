@@ -49,6 +49,14 @@ void main() {
         // 005 memory handlers
         'remember_fact': rememberFact ?? _rememberFactHandler(memRepo),
         'forget_fact': forgetFact ?? _forgetFactHandler(memRepo),
+
+        // 006 web tools — lightweight stubs (not under test here)
+        'web_search': (a) async => {'results': <Object?>[]},
+        'fetch_page': (a) async => {
+          'url': a['url'],
+          'text': '',
+          'truncated': false,
+        },
       },
     );
   }
@@ -295,9 +303,9 @@ void main() {
   // T014 — congruence: six-tool handler map covers the six registry names
   // ---------------------------------------------------------------------------
 
-  group('T014 — congruence over the ≤6 declared tools', () {
+  group('T014 — congruence over the ≤8 declared tools', () {
     test('buildDispatcher handler keys equal the full registry name set', () {
-      // The helper covers exactly the six names declared in the registry; we assert
+      // The helper covers exactly the eight names declared in the registry; we assert
       // this by comparing the literal key set against the live registry.
       const handlerKeys = <String>{
         'get_device_info',
@@ -306,16 +314,18 @@ void main() {
         'set_timer',
         'remember_fact',
         'forget_fact',
+        'web_search',
+        'fetch_page',
       };
       final registryNames = ToolRegistry.specs.map((s) => s.name).toSet();
       expect(
         handlerKeys,
         equals(registryNames),
         reason:
-            'the six handler names must equal the six registry names exactly',
+            'the eight handler names must equal the eight registry names exactly',
       );
-      // Sanity — registry is indeed six tools (T013 contract).
-      expect(registryNames, hasLength(6));
+      // Sanity — registry is indeed eight tools (T021 contract).
+      expect(registryNames, hasLength(8));
     });
 
     test('every registry tool has a handler in a fully-wired dispatcher', () async {
@@ -330,6 +340,8 @@ void main() {
         'forget_fact': {
           'id': 999,
         }, // unknown id → ToolFailure, but NOT 'tool not available'
+        'web_search': {'query': 'test query'},
+        'fetch_page': {'url': 'https://example.com'},
       };
 
       final dispatcher = buildDispatcher();

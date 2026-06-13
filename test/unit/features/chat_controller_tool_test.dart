@@ -233,7 +233,10 @@ void main() {
       expect(toolRows, hasLength(2));
       expect(toolRows[0].toolStatus, ToolCallStatus.success);
       expect(toolRows[1].toolStatus, ToolCallStatus.error);
-      expect(toolRows[1].toolResult!['error'], 'only one tool call per turn');
+      expect(
+        toolRows[1].toolResult!['error'],
+        'call skipped — one tool per turn',
+      );
     },
   );
 

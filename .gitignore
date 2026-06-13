@@ -46,3 +46,12 @@ app.*.map.json
 
 # Gradle build output at the android module root (created by `flutter build apk`).
 /android/build/
+
+# Local secrets — the Tavily BYOK key (006 web research) lives ONLY in flutter_secure_storage
+# at runtime (entered in Settings → web access). These files are a LOCAL dev convenience and must
+# NEVER be committed: a live API key in git history is a leak. The app does not read them.
+.env
+.env.*
+*.env
+secrets.json
+tavily.env

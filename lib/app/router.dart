@@ -8,6 +8,7 @@ import 'package:ai_assistant/features/onboarding/license_screen.dart';
 import 'package:ai_assistant/features/onboarding/preflight_blocked_screen.dart';
 import 'package:ai_assistant/features/settings/memory_screen.dart';
 import 'package:ai_assistant/features/settings/settings_screen.dart';
+import 'package:ai_assistant/features/settings/web_research_screen.dart';
 import 'package:flutter/material.dart';
 
 /// Named routes for the app's primary screens.
@@ -21,6 +22,7 @@ abstract final class AppRoutes {
   static const String history = '/history';
   static const String settings = '/settings';
   static const String memory = '/memory';
+  static const String webResearch = '/web-research';
 }
 
 /// Route table. Onboarding/download/chat are real screens (US1/US2); history and settings remain
@@ -40,6 +42,7 @@ abstract final class AppRouter {
       AppRoutes.history => (_) => const HistoryScreen(),
       AppRoutes.settings => (_) => const SettingsScreen(),
       AppRoutes.memory => (_) => const MemoryScreen(),
+      AppRoutes.webResearch => (_) => const WebResearchSettingsScreen(),
       _ => (_) => const _RouteSkeleton(label: 'not found'),
     };
     return MaterialPageRoute<dynamic>(builder: builder, settings: settings);

@@ -171,4 +171,125 @@ void main() {
       },
     );
   });
+
+  // ── T019 — format:uri keyword (006 web_research_tools.md §SchemaValidator delta) ──────────
+
+  group('format:uri', () {
+    // A minimal schema with a url property using format:uri and maxLength.
+    const uriSchema = <String, Object?>{
+      'type': 'object',
+      'properties': <String, Object?>{
+        'url': <String, Object?>{
+          'type': 'string',
+          'format': 'uri',
+          'maxLength': 2048,
+        },
+      },
+      'required': <String>['url'],
+    };
+
+    // ── Valid cases (must pass) ─────────────────────────────────────────────
+
+    test('valid http URL passes', () {
+      final result = validator.validate(uriSchema, {
+        'url': 'http://example.com',
+      });
+      expect(result.isValid, isTrue);
+    });
+
+    test('valid https URL passes', () {
+      final result = validator.validate(uriSchema, {
+        'url': 'https://flutter.dev/docs',
+      });
+      expect(result.isValid, isTrue);
+    });
+
+    test('https URL with path and query passes', () {
+      final result = validator.validate(uriSchema, {
+        'url':
+            'https://en.wikipedia.org/wiki/Dart_(programming_language)?foo=bar',
+      });
+      expect(result.isValid, isTrue);
+    });
+
+    // ── Invalid cases — "not a valid URI" ───────────────────────────────────
+
+    test('plain text (no scheme) fails with "not a valid URI"', () {
+      final result = validator.validate(uriSchema, {'url': 'not a url at all'});
+      expect(result, isA<InvalidT>());
+      expect((result as InvalidT).reason, contains('not a valid URI'));
+    });
+
+    test('URI with no scheme fails with "not a valid URI"', () {
+      // Missing scheme — Uri.tryParse returns a relative URI (hasScheme=false).
+      final result = validator.validate(uriSchema, {
+        'url': '//example.com/path',
+      });
+      expect(result, isA<InvalidT>());
+      expect((result as InvalidT).reason, contains('not a valid URI'));
+    });
+
+    test('URI with no authority fails with "not a valid URI"', () {
+      // A URI like "data:text/plain" has a scheme but no authority.
+      final result = validator.validate(uriSchema, {
+        'url': 'data:text/plain;base64,abc123',
+      });
+      expect(result, isA<InvalidT>());
+      expect((result as InvalidT).reason, contains('not a valid URI'));
+    });
+
+    test('empty string fails with "not a valid URI"', () {
+      final result = validator.validate(uriSchema, {'url': ''});
+      expect(result, isA<InvalidT>());
+      expect((result as InvalidT).reason, contains('not a valid URI'));
+    });
+
+    // ── Scheme allowlist is a SEPARATE step — format:uri does NOT reject ftp://
+    // The dispatcher applies the http/https check; format:uri only checks structural validity.
+    // This test confirms the separation: ftp:// passes format:uri (structure valid).
+    test(
+      'ftp:// URI passes format:uri (scheme allowlist is a separate step)',
+      () {
+        final result = validator.validate(uriSchema, {
+          'url': 'ftp://files.example.com/data.zip',
+        });
+        // format:uri passes — structural check is valid; scheme allowlist is NOT part of format.
+        expect(result.isValid, isTrue);
+      },
+    );
+
+    // ── maxLength on url ────────────────────────────────────────────────────
+
+    test('url at exactly maxLength 2048 passes', () {
+      // Construct a valid https URL that is exactly 2048 chars.
+      const base = 'https://example.com/';
+      final padding = 'a' * (2048 - base.length);
+      final url = '$base$padding';
+      expect(url.length, 2048);
+      final result = validator.validate(uriSchema, {'url': url});
+      expect(result.isValid, isTrue);
+    });
+
+    test('url one character over maxLength 2048 fails', () {
+      const base = 'https://example.com/';
+      final padding = 'a' * (2049 - base.length);
+      final url = '$base$padding';
+      expect(url.length, 2049);
+      final result = validator.validate(uriSchema, {'url': url});
+      expect(result, isA<InvalidT>());
+      // maxLength check fires before format:uri check (order: type → maxLength → format).
+      expect((result as InvalidT).reason, contains('2048'));
+    });
+
+    // ── Existing tests still pass (regression) ──────────────────────────────
+
+    test(
+      'format:uri does not affect non-uri schemas (existing tests unaffected)',
+      () {
+        // The original schema has no format:uri — should behave exactly as before.
+        expect(validator.validate(schema, {'theme': 'dark'}).isValid, isTrue);
+        expect(validator.validate(schema, {}).isValid, isFalse);
+      },
+    );
+  });
 }

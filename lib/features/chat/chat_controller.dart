@@ -18,6 +18,7 @@ import 'package:ai_assistant/domain/entities/image_input.dart';
 import 'package:ai_assistant/domain/entities/message.dart';
 import 'package:ai_assistant/domain/entities/pending_recording.dart';
 import 'package:ai_assistant/domain/entities/tool_outcome.dart';
+import 'package:ai_assistant/domain/entities/web_access_override.dart';
 import 'package:ai_assistant/domain/repositories/conversation_repository.dart';
 import 'package:ai_assistant/domain/services/gemma_service.dart';
 import 'package:ai_assistant/features/chat/attachment_controller.dart';
@@ -112,6 +113,38 @@ class ChatController extends Notifier<ChatState> {
   /// sessions) — the instruction is composed fresh at [loadModel] time by the session provider.
   /// Delegates to the shared [refreshSessionInstruction] helper (F3 — one composition site).
   Future<void> _refreshSession() => refreshSessionInstruction(ref);
+
+  /// Toggle the per-conversation web-access override (006 US3, T045, FR-008/FR-009/FR-032).
+  ///
+  /// Two effects, both BEFORE the next user turn:
+  ///   1. Persist [override] on the conversation row via [ConversationRepository.setWebAccessOverride]
+  ///      and refresh the family provider so the composer toggle reflects the new state immediately.
+  ///   2. Recreate the model session with the RECOMPUTED tool list. A bare [GemmaService.startSession]
+  ///      is NOT enough: the seam reuses the tool list baked at [loadModel], so a new
+  ///      `systemInstruction` does not add/remove the web tools. Invalidating [modelSessionProvider]
+  ///      forces it to recompute the triple-gated `declaredTools` and reload the model with the new
+  ///      list — so flipping the override genuinely adds or removes `web_search`/`fetch_page` for the
+  ///      next turn (FR-032). No-op on the session side when no conversation is open yet.
+  Future<void> toggleWebAccess(WebAccessOverride override) async {
+    final conversationId = state.conversationId;
+    if (conversationId == null) return; // no thread to persist against yet
+    await ref
+        .read(conversationRepositoryProvider)
+        .setWebAccessOverride(conversationId, override);
+    // Re-read the persisted override so the composer toggle reflects the change immediately.
+    ref.invalidate(conversationWebOverrideProvider(conversationId));
+    // Recompute the declared tool list and recreate the session (the seam re-bakes tools at
+    // loadModel — startSession alone would keep the stale list).
+    ref.invalidate(modelSessionProvider);
+    // Materialise the rebuilt session so the reload runs now (BEFORE the next turn), not lazily on
+    // the next watcher. Swallow a load failure here — the chat surface stays usable and the next
+    // send will surface any genuine model error.
+    try {
+      await ref.read(modelSessionProvider.future);
+    } catch (_) {
+      // Session reload failure is handled by the chat screen's _ModelError surface on next build.
+    }
+  }
 
   /// Send a turn (FR-012). [text] may be empty when an [image] or [audio] clip is attached
   /// (FR-004); at most one of the two is given (audio XOR image, 003 spec Q3 — enforced upstream
@@ -379,15 +412,19 @@ class ChatController extends Notifier<ChatState> {
     final outcome = await ref
         .read(toolDispatcherProvider)
         .dispatch(call.name, normalizedArgs);
+    // The model-facing payload carries the full handler result — including the web tools' transient
+    // `content`/`text` body, which the model needs to ground its reply on resume.
     final resultPayload = _resultPayloadOf(outcome);
     await repo.finalizeToolInvocation(
       toolRowId,
       status: outcome is ToolSuccess
           ? ToolCallStatus.success
           : ToolCallStatus.error,
-      result: resultPayload,
+      // The PERSISTED payload strips the web tools' body text so only metadata + source URLs land in
+      // the DB (006 T049, Decision 4, FR-024, SC-008) — the snippet/extracted text is in-session only.
+      result: _persistedResultPayloadOf(call.name, resultPayload),
       summary: _appendExtras(
-        _summaryOf(outcome, toolName: call.name),
+        _summaryOf(outcome, toolName: call.name, args: normalizedArgs),
         call.extraCallCount,
       ),
     );
@@ -432,8 +469,11 @@ class ChatController extends Notifier<ChatState> {
         await repo.finalizeToolInvocation(
           secondRowId,
           status: ToolCallStatus.error,
-          result: const {'error': 'only one tool call per turn'},
-          summary: 'only one tool call per turn',
+          // Canonical one-tool-per-turn message (contracts/web_research_tools.md §Dispatcher
+          // coercion/bounding 3, FR-028, spike §4.3) — a second tool call on the resumed stream is
+          // chipped-and-skipped, never executed.
+          result: const {'error': 'call skipped — one tool per turn'},
+          summary: 'call skipped — one tool per turn',
         );
       }
     } catch (_) {
@@ -457,19 +497,65 @@ class ChatController extends Notifier<ChatState> {
         ToolFailure(:final reason) => {'error': reason},
       };
 
+  /// The payload PERSISTED on the tool row, derived from the model-facing [payload] (006 T049,
+  /// Decision 4 / FR-024 / SC-008). Web tools strip their transient body text before the row is
+  /// written so the DB only ever holds metadata + answer-grounding source URLs — never the Tavily
+  /// `content` snippet bodies or the `fetch_page` extracted text:
+  ///   • `web_search` → `{results:[{title,url},…], sourceUrls:[…]}` (drops each result's `content`
+  ///     and `score`; a zero-results/`note`-only or `{error}` payload passes through unchanged).
+  ///   • `fetch_page` → `{url, truncated, sourceUrls}` (drops `text`).
+  ///   • all other tools (device/memory) and any `{error}` row → [payload] unchanged.
+  /// The body text remains in [resultPayload] fed to [GemmaService.resumeWithToolResult] — only the
+  /// DB write is stripped.
+  Map<String, Object?> _persistedResultPayloadOf(
+    String toolName,
+    Map<String, Object?> payload,
+  ) {
+    // Error rows ({error: …}) and any non-web tool persist verbatim.
+    if (payload.containsKey('error')) return payload;
+    switch (toolName) {
+      case 'web_search':
+        final results = payload['results'];
+        if (results is! List) {
+          return payload; // unexpected shape — persist verbatim
+        }
+        return {
+          'results': [
+            for (final r in results)
+              if (r is Map) {'title': r['title'], 'url': r['url']},
+          ],
+          // The zero-results path carries a `note` (and no sourceUrls) — preserve it verbatim so the
+          // chip/history keep the "no results found" provenance (FR-033).
+          'note': ?payload['note'],
+          'sourceUrls': ?payload['sourceUrls'],
+        };
+      case 'fetch_page':
+        return {
+          'url': ?payload['url'],
+          'truncated': ?payload['truncated'],
+          'sourceUrls': ?payload['sourceUrls'],
+        };
+      default:
+        return payload;
+    }
+  }
+
   /// The chip's quiet one-line summary (lowercase microcopy, display only — never fed to the model).
   ///
   /// [toolName] is threaded from [_runToolTurn] so memory tools get their spec-mandated wording
   /// (data-model §5 chip table) instead of the generic key-value fallback.
-  String _summaryOf(ToolOutcome outcome, {required String toolName}) =>
-      switch (outcome) {
-        ToolSuccess(:final result, :final truncated) =>
-          _summarizeSuccess(toolName, result) +
-              (truncated ? ' · truncated' : ''),
-        ToolUnknown(:final attemptedName) => 'unknown tool: $attemptedName',
-        ToolInvalidArgs(:final reason) => reason.toLowerCase(),
-        ToolFailure(:final reason) => reason.toLowerCase(),
-      };
+  String _summaryOf(
+    ToolOutcome outcome, {
+    required String toolName,
+    Map<String, Object?> args = const <String, Object?>{},
+  }) => switch (outcome) {
+    ToolSuccess(:final result, :final truncated) =>
+      _summarizeSuccess(toolName, result, args) +
+          (truncated ? ' · truncated' : ''),
+    ToolUnknown(:final attemptedName) => 'unknown tool: $attemptedName',
+    ToolInvalidArgs(:final reason) => reason.toLowerCase(),
+    ToolFailure(:final reason) => reason.toLowerCase(),
+  };
 
   /// Note discarded parallel calls on the same chip (FR-024).
   String _appendExtras(String summary, int extra) => extra > 0
@@ -478,15 +564,50 @@ class ChatController extends Notifier<ChatState> {
 
   /// Routes success summary: memory tools get spec-mandated wording (data-model §5 chip table);
   /// device tools fall through to the generic [_summarizeResult].
-  String _summarizeSuccess(String toolName, Map<String, Object?> result) {
+  String _summarizeSuccess(
+    String toolName,
+    Map<String, Object?> result,
+    Map<String, Object?> args,
+  ) {
     switch (toolName) {
       case 'remember_fact':
         return _rememberFactSummary(result);
       case 'forget_fact':
         return _forgetFactSummary(result);
+      case 'web_search':
+        return _webSearchSummary(result, args);
+      case 'fetch_page':
+        return _fetchPageSummary(result, args);
       default:
         return _summarizeResult(result);
     }
+  }
+
+  /// Chip wording for a `web_search` success (006 T033, FR-012):
+  ///   ≥1 result → `N results for "<query>"`
+  ///   0 results → `0 results`
+  ///
+  /// The result count comes from the handler's `results` array; the query is the validated arg.
+  String _webSearchSummary(
+    Map<String, Object?> result,
+    Map<String, Object?> args,
+  ) {
+    final results = result['results'];
+    final count = results is List ? results.length : 0;
+    if (count == 0) return '0 results';
+    final query = (args['query'] as String?)?.trim() ?? '';
+    return '$count results for "$query"';
+  }
+
+  /// Chip wording for a `fetch_page` success (006 T037, FR-016): `fetched <domain>`, where the
+  /// domain is `Uri.parse(url).host` of the fetched URL (the handler echoes the final URL).
+  String _fetchPageSummary(
+    Map<String, Object?> result,
+    Map<String, Object?> args,
+  ) {
+    final url = (result['url'] as String?) ?? (args['url'] as String?) ?? '';
+    final host = Uri.tryParse(url)?.host ?? '';
+    return host.isEmpty ? 'fetched' : 'fetched $host';
   }
 
   /// Chip wording for a `remember_fact` success (data-model §5):
@@ -582,6 +703,11 @@ class ChatController extends Notifier<ChatState> {
     final memoryEnabled = ref.read(memoryEnabledProvider);
     final hasFacts =
         (await ref.read(memoryRepositoryProvider).activeCount()) > 0;
+    // Reserve the web tool-use budget (~80 tok, 006 T032) when the web tools are declared — the
+    // same triple gate the session provider applies (functionCalling AND webAccessEnabled AND a
+    // valid key), so the injected web tool-use instruction is never crowded out by a long history.
+    final webAccessEnabled = ref.read(webAccessEnabledProvider);
+    final hasValidKey = await ref.read(secureKeyStoreProvider).hasValidKey();
     return ref
         .read(contextAssemblerProvider)
         .assemble(
@@ -592,6 +718,8 @@ class ChatController extends Notifier<ChatState> {
           reserveMemoryBlock: memoryEnabled && hasFacts,
           reserveMemoryCaptureInstruction:
               reserveToolInstruction && memoryEnabled,
+          reserveWebTools:
+              reserveToolInstruction && webAccessEnabled && hasValidKey,
         );
   }
 

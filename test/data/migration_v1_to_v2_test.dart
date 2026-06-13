@@ -82,7 +82,7 @@ void main() {
       final conversations = await db.select(db.conversations).get();
       expect(conversations.single.title, 'old chat');
 
-      expect(db.schemaVersion, 5);
+      expect(db.schemaVersion, 6);
     },
   );
 

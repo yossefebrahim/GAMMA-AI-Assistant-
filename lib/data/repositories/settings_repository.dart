@@ -18,6 +18,7 @@ class SettingsRepository {
     themeMode: AppThemeMode.values.byName(row.themeMode),
     licenseAcknowledgedAt: row.licenseAcknowledgedAt,
     memoryEnabled: row.memoryEnabled,
+    webAccessEnabled: row.webAccessEnabled,
   );
 
   Future<void> _ensureRow() async {
@@ -69,6 +70,19 @@ class SettingsRepository {
     await _ensureRow();
     await (_db.update(_db.appSettingsTable)..where((t) => t.id.equals(_rowId)))
         .write(AppSettingsTableCompanion(memoryEnabled: Value(enabled)));
+  }
+
+  /// Read just the web-access-enabled flag (006). Lazily creates the default row if absent.
+  Future<bool> readWebAccessEnabled() async {
+    final settings = await read();
+    return settings.webAccessEnabled;
+  }
+
+  /// Persist the web-access-enabled preference (006, FR-001).
+  Future<void> setWebAccessEnabled(bool enabled) async {
+    await _ensureRow();
+    await (_db.update(_db.appSettingsTable)..where((t) => t.id.equals(_rowId)))
+        .write(AppSettingsTableCompanion(webAccessEnabled: Value(enabled)));
   }
 
   /// Record the one-time model-license acknowledgment (clarification Q1).
@@ -140,3 +154,26 @@ class MemoryEnabledController extends Notifier<bool> {
 final memoryEnabledProvider = NotifierProvider<MemoryEnabledController, bool>(
   MemoryEnabledController.new,
 );
+
+/// Whether web research is globally enabled (006, Decision 1 — default **false**). Reflects the
+/// persisted value reactively and exposes [WebAccessEnabledController.set] to change + persist it.
+class WebAccessEnabledController extends Notifier<bool> {
+  @override
+  bool build() {
+    final settings = ref.watch(settingsStreamProvider);
+    return settings.maybeWhen(
+      data: (value) => value.webAccessEnabled,
+      orElse: () => false,
+    );
+  }
+
+  Future<void> set(bool enabled) async {
+    state = enabled; // optimistic; the persisted stream will re-confirm
+    await ref.read(settingsRepositoryProvider).setWebAccessEnabled(enabled);
+  }
+}
+
+final webAccessEnabledProvider =
+    NotifierProvider<WebAccessEnabledController, bool>(
+      WebAccessEnabledController.new,
+    );

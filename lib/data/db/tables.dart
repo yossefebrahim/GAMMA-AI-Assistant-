@@ -15,6 +15,12 @@ class Conversations extends Table {
 
   /// Primary sort key for the history list (most-recent first).
   DateTimeColumn get updatedAt => dateTime()();
+
+  /// Per-conversation web-access override (006, schema v6). NULL = inherit the global
+  /// `webAccessEnabled` setting; 'on' / 'off' force web tools on or off for this conversation
+  /// (FR-007, three-state, data-model §1). Added by the v5→v6 migration as nullable, so existing
+  /// rows stay valid with NULL (= inherit).
+  TextColumn get webAccessOverride => text().nullable()();
 }
 
 @DataClassName('MessageRow')
@@ -113,6 +119,13 @@ class AppSettingsTable extends Table {
   /// facts are neither captured nor injected (management still works, FR-016). Added by the v4→v5
   /// migration with a default of 1 so the existing single row stays valid (data-model §2).
   BoolColumn get memoryEnabled => boolean().withDefault(const Constant(true))();
+
+  /// Whether web research tools are globally enabled (006, schema v6). Default **false** (off by
+  /// default — SC-001, Decision 1); individual conversations may override via
+  /// [Conversations.webAccessOverride]. Added by the v5→v6 migration with DEFAULT 0 so the
+  /// existing single row stays valid (data-model §2).
+  BoolColumn get webAccessEnabled =>
+      boolean().withDefault(const Constant(false))();
 
   @override
   Set<Column<Object>> get primaryKey => {id};

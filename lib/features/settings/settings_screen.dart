@@ -17,6 +17,7 @@ class SettingsScreen extends ConsumerWidget {
 
   static const Key deleteModelKey = Key('settings-delete-model');
   static const Key memoryRowKey = Key('settings-memory-row');
+  static const Key webResearchRowKey = Key('settings-web-research-row');
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -105,6 +106,27 @@ class SettingsScreen extends ConsumerWidget {
             ),
             trailing: Icon(Icons.chevron_right, color: colors.textSecondary),
             onTap: () => Navigator.of(context).pushNamed(AppRoutes.memory),
+          ),
+          const Divider(height: AppSpacing.hairline),
+          const _SectionHeader(label: 'web research'),
+          ListTile(
+            key: webResearchRowKey,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.s16,
+              vertical: AppSpacing.s4,
+            ),
+            title: Text('web access', style: theme.textTheme.bodyLarge),
+            subtitle: Padding(
+              padding: const EdgeInsets.only(top: AppSpacing.s4),
+              child: Text(
+                AppText.spec('byok tavily key · search + read pages'),
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: colors.textSecondary,
+                ),
+              ),
+            ),
+            trailing: Icon(Icons.chevron_right, color: colors.textSecondary),
+            onTap: () => Navigator.of(context).pushNamed(AppRoutes.webResearch),
           ),
         ],
       ),

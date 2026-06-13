@@ -104,7 +104,7 @@ void main() {
 
       final conversations = await db.select(db.conversations).get();
       expect(conversations.single.title, 'v2 chat');
-      expect(db.schemaVersion, 5);
+      expect(db.schemaVersion, 6);
     },
   );
 

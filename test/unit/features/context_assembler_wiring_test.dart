@@ -143,6 +143,7 @@ class _SpyAssembler extends ContextAssembler {
   bool? reserveToolInstruction;
   bool? reserveMemoryBlock;
   bool? reserveMemoryCaptureInstruction;
+  bool? reserveWebTools;
 
   @override
   List<ChatTurn> assemble(
@@ -152,10 +153,12 @@ class _SpyAssembler extends ContextAssembler {
     bool reserveToolInstruction = false,
     bool reserveMemoryBlock = false,
     bool reserveMemoryCaptureInstruction = false,
+    bool reserveWebTools = false,
   }) {
     this.reserveToolInstruction = reserveToolInstruction;
     this.reserveMemoryBlock = reserveMemoryBlock;
     this.reserveMemoryCaptureInstruction = reserveMemoryCaptureInstruction;
+    this.reserveWebTools = reserveWebTools;
     return super.assemble(
       priorMessages,
       images: images,
@@ -163,6 +166,7 @@ class _SpyAssembler extends ContextAssembler {
       reserveToolInstruction: reserveToolInstruction,
       reserveMemoryBlock: reserveMemoryBlock,
       reserveMemoryCaptureInstruction: reserveMemoryCaptureInstruction,
+      reserveWebTools: reserveWebTools,
     );
   }
 }

@@ -4,8 +4,14 @@ import 'package:ai_assistant/domain/entities/app_settings.dart';
 import 'package:ai_assistant/domain/entities/memory.dart';
 import 'package:ai_assistant/domain/services/clipboard_tool_service.dart';
 import 'package:ai_assistant/domain/services/device_info_tool_service.dart';
+import 'package:ai_assistant/domain/services/network_research_service.dart';
+import 'package:ai_assistant/domain/services/secure_key_store.dart';
 import 'package:ai_assistant/domain/services/timer_intent_service.dart';
 import 'package:ai_assistant/domain/services/tool_dispatcher.dart';
+import 'package:ai_assistant/domain/services/web_url_launcher.dart';
+import 'package:ai_assistant/infrastructure/network/flutter_secure_key_store.dart';
+import 'package:ai_assistant/infrastructure/network/tavily_network_research_service.dart';
+import 'package:ai_assistant/infrastructure/tools/android_intent_url_launcher.dart';
 import 'package:ai_assistant/infrastructure/tools/clipboard_tool_service.dart';
 import 'package:ai_assistant/infrastructure/tools/device_info_tool_service.dart';
 import 'package:ai_assistant/infrastructure/tools/timer_intent_service.dart';
@@ -32,6 +38,34 @@ final timerIntentServiceProvider = Provider<TimerIntentService>((ref) {
 /// The `summarize_clipboard` seam (US5). Overridable in tests with a fake.
 final clipboardToolServiceProvider = Provider<ClipboardToolService>((ref) {
   return const FlutterClipboardToolService();
+});
+
+/// The secure key store seam (006 T017). Overridable in tests with [FakeSecureKeyStore].
+///
+/// The concrete [FlutterSecureKeyStore] is the ONLY file permitted to import
+/// `flutter_secure_storage` (Principle VII, check_network_seam.sh). All other code
+/// interacts via this provider's [SecureKeyStore] interface.
+final secureKeyStoreProvider = Provider<SecureKeyStore>((ref) {
+  return FlutterSecureKeyStore();
+});
+
+/// The source-URL-chip browser hand-off seam (006 T033, FR-013). Overridable in tests with a fake
+/// [WebUrlLauncher] so a chip tap can be asserted without firing a real Android intent.
+///
+/// The concrete [AndroidIntentUrlLauncher] (in `lib/infrastructure/tools/`) is one of only two
+/// importers of `android_intent_plus` (Principle VII, check_plugin_seam.sh).
+final webUrlLauncherProvider = Provider<WebUrlLauncher>((ref) {
+  return const AndroidIntentUrlLauncher();
+});
+
+/// The network research seam (006 T017). Overridable in tests with [FakeNetworkResearchService].
+///
+/// The concrete [TavilyNetworkResearchService] is the ONLY file permitted to import
+/// `package:http` (Principle VII, check_network_seam.sh). All other code interacts via this
+/// provider's [NetworkResearchService] interface.
+final networkResearchServiceProvider = Provider<NetworkResearchService>((ref) {
+  final keyStore = ref.watch(secureKeyStoreProvider);
+  return TavilyNetworkResearchService(keyStore: keyStore);
 });
 
 /// The injected handler map, keyed by registry tool name.
@@ -111,6 +145,72 @@ final toolHandlersProvider = Provider<Map<String, ToolHandler>>((ref) {
       if (!deleted) throw _NoSuchFactException(id);
       return {'forgot': id};
     },
+    // web_search (006 US1): searches via Tavily and returns the top ≤ 3 results as
+    // {title, url, content, score} objects — the field name is `content`, NOT `snippet` (FR-010).
+    // The query is schema-validated (non-empty, ≤ 400 chars) before reaching here.
+    //
+    // Structural StateError guard (contracts/web_research_tools.md): the triple gate should have
+    // prevented declaration without a valid key, so reaching the handler with no key is a coding
+    // error — surfaced as a ToolFailure (the dispatcher catches the throw), never a silent call.
+    //
+    // ResearchError subtypes thrown by the seam propagate out of the closure and are mapped to a
+    // plain-language ToolFailure by the dispatcher's catch (see ResearchError → message table). The
+    // service is reached only via the NetworkResearchService interface — no plugin import here
+    // (Principle VII).
+    'web_search': (args) async {
+      if (!await ref.read(secureKeyStoreProvider).hasValidKey()) {
+        throw StateError('web tools called without a valid key');
+      }
+      final query = args['query'] as String;
+      final results = await ref
+          .read(networkResearchServiceProvider)
+          .search(query);
+      if (results.isEmpty) {
+        return const {
+          'results': <Object?>[],
+          'note': 'no results found — answering from own knowledge',
+        };
+      }
+      // `content` is Tavily's field name and MUST NOT be renamed (FR-010). `sourceUrls` is the
+      // answer-grounding reference rendered as tappable source URL chips (FR-013, Decision 4).
+      //
+      // Pre-truncate each `content` value so the SERIALISED result stays within the spec's 2,000-char
+      // bound (FR-014). The dispatcher's `resultCharBound` is the belt-and-braces safety net, but it
+      // can only shrink TOP-LEVEL string values — it cannot reach into the nested `results` array —
+      // so the handler is the primary truncation site for web_search (contracts/web_research_tools.md
+      // §Dispatcher coercion/bounding 1). The per-result budget divides the content allowance evenly.
+      final contentBudget = (_kWebSearchContentBudget / results.length).floor();
+      return {
+        'results': [
+          for (final r in results)
+            {
+              'title': r.title,
+              'url': r.url,
+              'content': _truncate(r.content, contentBudget),
+              'score': r.score,
+            },
+        ],
+        'sourceUrls': [for (final r in results) r.url],
+      };
+    },
+    // fetch_page (006 US4): bound in checkpoint 2 (T036). Declared here in checkpoint 1 only when
+    // the triple gate is true; the registry/handler congruence test asserts the map covers exactly
+    // the declared names.
+    'fetch_page': (args) async {
+      if (!await ref.read(secureKeyStoreProvider).hasValidKey()) {
+        throw StateError('web tools called without a valid key');
+      }
+      final url = args['url'] as String;
+      final result = await ref
+          .read(networkResearchServiceProvider)
+          .fetchPage(url);
+      return {
+        'url': result.url,
+        'text': result.extractedText,
+        'truncated': result.wasTruncated,
+        'sourceUrls': [result.url],
+      };
+    },
   };
 });
 
@@ -118,6 +218,19 @@ final toolHandlersProvider = Provider<Map<String, ToolHandler>>((ref) {
 final toolDispatcherProvider = Provider<ToolDispatcher>((ref) {
   return ToolDispatcher(handlers: ref.watch(toolHandlersProvider));
 });
+
+/// Combined character allowance shared across the ≤ 3 `web_search` result `content` snippets so the
+/// serialised tool result stays within the spec's 2,000-char bound (FR-014). Sized conservatively
+/// to leave headroom for the surrounding JSON keys, titles, urls, scores, and `sourceUrls` array.
+const int _kWebSearchContentBudget = 1500;
+
+/// Hard-truncate [text] to [maxChars] characters, appending an ellipsis when clipped. Used by the
+/// `web_search` handler to pre-truncate each result's content before serialisation.
+String _truncate(String text, int maxChars) {
+  if (maxChars <= 0) return '';
+  if (text.length <= maxChars) return text;
+  return '${text.substring(0, maxChars)}…';
+}
 
 // Private exception types so the dispatcher's _reasonOf sees the bare message (no "Exception: "
 // prefix), matching the TimerUnavailableException pattern used by 004 handlers.

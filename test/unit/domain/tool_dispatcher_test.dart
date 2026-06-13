@@ -180,7 +180,7 @@ void main() {
   test(
     'guarantee 5 — handler map covers exactly the registry names (congruence)',
     () {
-      // All six tools: four device tools (004) + two memory tools (005).
+      // All eight tools: four device tools (004) + two memory tools (005) + two web tools (006).
       final handlers = {
         'get_device_info': (Map<String, Object?> a) async => a,
         'summarize_clipboard': (Map<String, Object?> a) async => a,
@@ -188,6 +188,8 @@ void main() {
         'set_timer': (Map<String, Object?> a) async => a,
         'remember_fact': (Map<String, Object?> a) async => a,
         'forget_fact': (Map<String, Object?> a) async => a,
+        'web_search': (Map<String, Object?> a) async => a,
+        'fetch_page': (Map<String, Object?> a) async => a,
       };
       final registryNames = ToolRegistry.specs.map((s) => s.name).toSet();
       expect(handlers.keys.toSet(), registryNames);

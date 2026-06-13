@@ -9,6 +9,7 @@ import 'package:ai_assistant/domain/entities/image_attachment.dart';
 import 'package:ai_assistant/domain/entities/message.dart';
 import 'package:ai_assistant/domain/entities/tool_outcome.dart';
 import 'package:ai_assistant/domain/entities/tool_spec.dart';
+import 'package:ai_assistant/domain/entities/web_access_override.dart';
 import 'package:ai_assistant/domain/repositories/conversation_repository.dart';
 import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -45,7 +46,16 @@ class DriftConversationRepository implements ConversationRepository {
     title: r.title,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
+    webAccessOverride: _decodeOverride(r.webAccessOverride),
   );
+
+  /// Decode the persisted `web_access_override` TEXT (NULL / 'on' / 'off') into the domain enum.
+  /// NULL — and any unexpected value — maps to `null`, which IS the `inherit` state (006, FR-007).
+  WebAccessOverride? _decodeOverride(String? raw) => switch (raw) {
+    'on' => WebAccessOverride.on,
+    'off' => WebAccessOverride.off,
+    _ => null,
+  };
 
   Message _toMessage(MessageRow r) => Message(
     id: r.id,
@@ -298,6 +308,26 @@ class DriftConversationRepository implements ConversationRepository {
       );
     }
     return stale.length;
+  }
+
+  @override
+  Future<WebAccessOverride?> readWebAccessOverride(int conversationId) async {
+    final row = await _dao.conversationById(conversationId);
+    return _decodeOverride(row.webAccessOverride);
+  }
+
+  @override
+  Future<void> setWebAccessOverride(
+    int conversationId,
+    WebAccessOverride? override,
+  ) {
+    // NULL = inherit; 'on' / 'off' = explicit. Mirrors [_decodeOverride] (006, FR-007).
+    final raw = switch (override) {
+      WebAccessOverride.on => 'on',
+      WebAccessOverride.off => 'off',
+      _ => null,
+    };
+    return _dao.writeWebAccessOverride(conversationId, raw);
   }
 
   @override

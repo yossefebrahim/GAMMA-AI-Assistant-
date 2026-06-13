@@ -116,5 +116,19 @@
         <intent>
             <action android:name="android.intent.action.SET_TIMER"/>
         </intent>
+        <!-- Web research (006 T033, FR-022/FR-023): tapping a source-URL chip fires
+             ACTION_VIEW at the http(s) URL via android_intent_plus (AndroidIntentUrlLauncher).
+             Android 11+ package visibility: without these <queries> entries,
+             intent.canResolveActivity() returns false even with a browser installed, so the
+             launcher's resolve-guard silently no-ops and no browser opens. Declare both schemes
+             so the source chips open the device's default browser. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="http"/>
+        </intent>
     </queries>
 </manifest>

@@ -52,8 +52,24 @@ check_seam "battery_plus|android_intent_plus" "lib/infrastructure/tools/" \
   "battery_plus/android_intent_plus" \
   "depend on the DeviceInfoToolService / TimerIntentService seams in lib/infrastructure/tools/ instead (004 R4)."
 
+# 006 web-research seam guards (Principle VII, FR-018, SC-014):
+#   * package:http          → ONLY lib/infrastructure/network/ (TavilyNetworkResearchService)
+#   * flutter_secure_storage → ONLY lib/infrastructure/network/ (FlutterSecureKeyStore)
+#   * package:html          → ONLY lib/infrastructure/network/ (HtmlExtractor)
+check_seam "http[/']" "lib/infrastructure/network/" \
+  "package:http" \
+  "depend on lib/domain/services/network_research_service.dart (the NetworkResearchService seam) instead. Only TavilyNetworkResearchService may import package:http (006, Principle VII)."
+
+check_seam "flutter_secure_storage" "lib/infrastructure/network/" \
+  "flutter_secure_storage" \
+  "depend on lib/domain/services/secure_key_store.dart (the SecureKeyStore seam) instead. Only FlutterSecureKeyStore may import flutter_secure_storage (006, Principle VII)."
+
+check_seam "html[/']" "lib/infrastructure/network/" \
+  "package:html" \
+  "depend on lib/infrastructure/network/html_extractor.dart (HtmlExtractor) via the NetworkResearchService seam instead. Only HtmlExtractor may import package:html (006, Principle VII)."
+
 if [[ "$status" -ne 0 ]]; then
   exit 1
 fi
 
-echo "✓ Plugin seams intact — flutter_gemma → lib/infrastructure/gemma/; image_picker/permission_handler/record/audioplayers → lib/infrastructure/media/; battery_plus/android_intent_plus → lib/infrastructure/tools/"
+echo "✓ Plugin seams intact — flutter_gemma → lib/infrastructure/gemma/; image_picker/permission_handler/record/audioplayers → lib/infrastructure/media/; battery_plus/android_intent_plus → lib/infrastructure/tools/; http/flutter_secure_storage/html → lib/infrastructure/network/"

@@ -79,6 +79,15 @@ class ConversationDao extends DatabaseAccessor<AppDatabase>
         .get();
   }
 
+  /// Persist the per-conversation web-access override (006, FR-007). Writes NULL for `inherit`,
+  /// `'on'` / `'off'` for the explicit states. Does not bump `updatedAt` — the override is a
+  /// session-config change, not a content change (history ordering is unaffected).
+  Future<void> writeWebAccessOverride(int id, String? override) {
+    return (update(conversations)..where((c) => c.id.equals(id))).write(
+      ConversationsCompanion(webAccessOverride: Value(override)),
+    );
+  }
+
   /// Deletes the conversation; messages cascade via the FK (FR-022).
   Future<int> deleteConversationById(int id) =>
       (delete(conversations)..where((c) => c.id.equals(id))).go();
