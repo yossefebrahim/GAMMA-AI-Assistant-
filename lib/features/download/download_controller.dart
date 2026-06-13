@@ -57,6 +57,8 @@ class DownloadUiState {
       downloadedBytes: downloadedBytes ?? this.downloadedBytes,
       totalBytes: totalBytes ?? this.totalBytes,
       stalled: stalled ?? this.stalled,
+      // Intentional: `error` resets to null on every copyWith unless re-supplied — a copy that
+      // doesn't pass `error` clears any prior message (so progress updates don't carry a stale error).
       error: error,
       permissionBlocked: permissionBlocked ?? this.permissionBlocked,
     );

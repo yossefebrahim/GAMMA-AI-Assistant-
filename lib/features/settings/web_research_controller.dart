@@ -30,8 +30,10 @@ class WebResearchController extends Notifier<void> {
   /// stored the global toggle becomes enable-able (it stays at its persisted value here — enabling
   /// is an explicit user action via [setGlobalToggle], FR-005).
   ///
-  /// Refreshes the live session so, if the toggle was already on, the web tools become available for
-  /// the next conversation (FR-032).
+  /// Recomposes the system instruction via [_refreshSession] (FR-032). Note: this does NOT by itself
+  /// declare the `web_search` / `fetch_page` tools — like [clearKey]'s caveat, the genuine tool-list
+  /// re-declaration happens at the next conversation open (when `modelSessionProvider` re-evaluates
+  /// the triple gate at load time); `_refreshSession` here only refreshes the live system instruction.
   Future<void> saveKey(String key) async {
     await ref.read(secureKeyStoreProvider).writeTavilyKey(key);
     await _refreshSession();

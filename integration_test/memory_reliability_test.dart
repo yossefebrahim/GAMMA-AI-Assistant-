@@ -279,10 +279,12 @@ const Set<String> _validCategories = {
   if (fact == null) return (false, 'missing required field: fact');
   if (category == null) return (false, 'missing required field: category');
   // Type + length checks.
-  if (fact is! String || fact.trim().isEmpty)
+  if (fact is! String || fact.trim().isEmpty) {
     return (false, 'fact must be a non-empty string');
-  if (fact.length > 80)
+  }
+  if (fact.length > 80) {
     return (false, 'fact exceeds 80 characters (got ${fact.length})');
+  }
   // Enum check.
   if (category is! String || !_validCategories.contains(category)) {
     return (
@@ -303,8 +305,9 @@ const Set<String> _validCategories = {
   if (id == null) return (false, 'missing required field: id');
   // Integer or whole-valued double (004 dispatcher coercion — spike §3.2.3).
   final idVal = id is double ? id.toInt() : id;
-  if (idVal is! int || idVal < 1)
+  if (idVal is! int || idVal < 1) {
     return (false, 'id must be an integer ≥ 1 (got $id)');
+  }
   return (true, null);
 }
 

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:ai_assistant/app/router.dart';
 import 'package:ai_assistant/app/theme/app_colors.dart';
 import 'package:ai_assistant/app/theme/app_spacing.dart';
@@ -45,8 +47,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           case AppLifecycleState.paused:
           case AppLifecycleState.detached:
           case AppLifecycleState.hidden:
-            ref.read(recordingControllerProvider.notifier).onAppBackgrounded();
-            ref.read(gemmaServiceProvider).close();
+            unawaited(
+              ref
+                  .read(recordingControllerProvider.notifier)
+                  .onAppBackgrounded(),
+            );
+            unawaited(ref.read(gemmaServiceProvider).close());
           case AppLifecycleState.resumed:
             ref.invalidate(modelSessionProvider);
           case AppLifecycleState.inactive:

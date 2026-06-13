@@ -1,3 +1,4 @@
+import 'package:ai_assistant/domain/entities/map_equality.dart';
 import 'package:meta/meta.dart';
 
 /// One event in a [GemmaService.generate] / `resumeWithToolResult` stream (004 R2).
@@ -56,25 +57,8 @@ final class ToolCallRequested extends GenerationEvent {
       other is ToolCallRequested &&
       other.name == name &&
       other.extraCallCount == extraCallCount &&
-      _mapEquals(other.args, args);
+      mapEquals(other.args, args);
 
   @override
-  int get hashCode => Object.hash(name, extraCallCount, _mapHash(args));
-}
-
-bool _mapEquals(Map<String, Object?> a, Map<String, Object?> b) {
-  if (a.length != b.length) return false;
-  for (final entry in a.entries) {
-    if (!b.containsKey(entry.key) || b[entry.key] != entry.value) return false;
-  }
-  return true;
-}
-
-int _mapHash(Map<String, Object?> map) {
-  // Order-independent hash so two equal maps hash alike regardless of key insertion order.
-  var hash = 0;
-  for (final entry in map.entries) {
-    hash ^= Object.hash(entry.key, entry.value);
-  }
-  return hash;
+  int get hashCode => Object.hash(name, extraCallCount, mapHash(args));
 }

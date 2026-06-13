@@ -27,7 +27,7 @@ class HistoryController extends Notifier<void> {
 
   /// Start a fresh, empty thread — existing conversations are preserved (FR-019).
   void newConversation() {
-    ref.read(chatControllerProvider.notifier).openConversation(null);
+    unawaited(ref.read(chatControllerProvider.notifier).openConversation(null));
   }
 
   /// Open an existing conversation in the chat surface (FR-020).

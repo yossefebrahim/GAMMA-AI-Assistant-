@@ -1,3 +1,5 @@
+import 'package:meta/meta.dart';
+
 /// The seam over voice-clip capture (003 contracts/audio_recorder.md). The concrete
 /// `RecordAudioRecorderService` (over `record ^7.0.0`) lives in `lib/infrastructure/media/`
 /// (enforced by tool/check_plugin_seam.sh); the recording controller depends on this interface and
@@ -29,6 +31,7 @@ abstract interface class AudioRecorderService {
 
 /// The captured clip a [AudioRecorderService.stop] returns: a temp path in app cache (deleted by
 /// the controller on remove/replace/switch — nothing persists from a cancelled compose).
+@immutable
 class RecordedAudio {
   const RecordedAudio({
     required this.path,

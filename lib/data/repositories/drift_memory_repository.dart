@@ -97,68 +97,77 @@ class DriftMemoryRepository implements MemoryRepository {
     final trimmed = fact.trim();
     final normalizedIncoming = _normalize(trimmed);
 
-    // Compare only against active facts in the SAME category, most-recent first (deterministic).
-    final actives =
-        await (_db.select(_db.memories)
-              ..where(
-                (m) => m.active.equals(true) & m.category.equals(category.name),
-              )
-              ..orderBy([
-                (m) => OrderingTerm(
-                  expression: m.updatedAt,
-                  mode: OrderingMode.desc,
-                ),
-                (m) => OrderingTerm(expression: m.id, mode: OrderingMode.desc),
-              ]))
-            .get();
+    // The dedupe/supersede decision + insert + cap-enforcement + inserted-row re-read are one
+    // atomic read-modify-write: a failure rolls back fully rather than leaving partial state
+    // (e.g. an insert without its cap-enforcement deactivations). Success-path behavior is
+    // identical.
+    return _db.transaction(() async {
+      // Compare only against active facts in the SAME category, most-recent first (deterministic).
+      final actives =
+          await (_db.select(_db.memories)
+                ..where(
+                  (m) =>
+                      m.active.equals(true) & m.category.equals(category.name),
+                )
+                ..orderBy([
+                  (m) => OrderingTerm(
+                    expression: m.updatedAt,
+                    mode: OrderingMode.desc,
+                  ),
+                  (m) =>
+                      OrderingTerm(expression: m.id, mode: OrderingMode.desc),
+                ]))
+              .get();
 
-    // 1. Exact restatement → no new row, refresh updatedAt (SC-006).
-    for (final a in actives) {
-      if (_normalize(a.fact) == normalizedIncoming) {
-        final now = _now();
-        await (_db.update(_db.memories)..where((m) => m.id.equals(a.id))).write(
-          MemoriesCompanion(updatedAt: Value(now)),
-        );
-        return UpsertUnchanged(_toMemory(a).copyWith(updatedAt: now));
+      // 1. Exact restatement → no new row, refresh updatedAt (SC-006).
+      for (final a in actives) {
+        if (_normalize(a.fact) == normalizedIncoming) {
+          final now = _now();
+          await (_db.update(_db.memories)..where((m) => m.id.equals(a.id)))
+              .write(MemoriesCompanion(updatedAt: Value(now)));
+          return UpsertUnchanged(_toMemory(a).copyWith(updatedAt: now));
+        }
       }
-    }
 
-    // 2. Near-duplicate / conflict (Jaccard ≥ threshold) → supersede in place.
-    final incomingWords = _contentWords(normalizedIncoming);
-    for (final a in actives) {
-      final similarity = _jaccard(
-        incomingWords,
-        _contentWords(_normalize(a.fact)),
-      );
-      if (similarity >= supersedeThreshold) {
-        final now = _now();
-        await (_db.update(_db.memories)..where((m) => m.id.equals(a.id))).write(
-          MemoriesCompanion(fact: Value(trimmed), updatedAt: Value(now)),
+      // 2. Near-duplicate / conflict (Jaccard ≥ threshold) → supersede in place.
+      final incomingWords = _contentWords(normalizedIncoming);
+      for (final a in actives) {
+        final similarity = _jaccard(
+          incomingWords,
+          _contentWords(_normalize(a.fact)),
         );
-        return UpsertSuperseded(
-          _toMemory(a).copyWith(fact: trimmed, updatedAt: now),
-        );
+        if (similarity >= supersedeThreshold) {
+          final now = _now();
+          await (_db.update(
+            _db.memories,
+          )..where((m) => m.id.equals(a.id))).write(
+            MemoriesCompanion(fact: Value(trimmed), updatedAt: Value(now)),
+          );
+          return UpsertSuperseded(
+            _toMemory(a).copyWith(fact: trimmed, updatedAt: now),
+          );
+        }
       }
-    }
 
-    // 3. Otherwise insert a new active fact, then enforce the cap.
-    final now = _now();
-    final id = await _db
-        .into(_db.memories)
-        .insert(
-          MemoriesCompanion.insert(
-            fact: trimmed,
-            category: category.name,
-            createdAt: now,
-            updatedAt: now,
-            sourceConversationId: Value(sourceConversationId),
-          ),
-        );
-    await _enforceCap();
-    final inserted = await (_db.select(
-      _db.memories,
-    )..where((m) => m.id.equals(id))).getSingle();
-    return UpsertCreated(_toMemory(inserted));
+      // 3. Otherwise insert a new active fact, then enforce the cap.
+      final now = _now();
+      final id = await _db
+          .into(_db.memories)
+          .insert(
+            MemoriesCompanion.insert(
+              fact: trimmed,
+              category: category.name,
+              createdAt: now,
+              updatedAt: now,
+              sourceConversationId: Value(sourceConversationId),
+            ),
+          );
+      await _enforceCap();
+      final inserted = await (_db.select(
+        _db.memories,
+      )..where((m) => m.id.equals(id))).getSingle();
+      return UpsertCreated(_toMemory(inserted));
+    });
   }
 
   /// If the active count exceeds [maxActiveFacts], deactivate the oldest-`updatedAt` actives down
@@ -194,6 +203,8 @@ class DriftMemoryRepository implements MemoryRepository {
     return updated > 0;
   }
 
+  /// Precondition: an ACTIVE row with [id] exists. A missing or already-inactive id is a silent
+  /// no-op (the `active=true` guard matches zero rows) — callers must guarantee the row is live.
   @override
   Future<void> editFact(int id, String fact, MemoryCategory category) async {
     await (_db.update(

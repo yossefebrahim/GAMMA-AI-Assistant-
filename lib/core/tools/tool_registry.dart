@@ -181,7 +181,6 @@ abstract final class ToolRegistry {
           },
         },
         'required': <String>['query'],
-        'additionalProperties': false,
       },
     ),
     ToolSpec(
@@ -208,7 +207,6 @@ abstract final class ToolRegistry {
           },
         },
         'required': <String>['url'],
-        'additionalProperties': false,
       },
     ),
   ];

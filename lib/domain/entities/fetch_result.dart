@@ -14,7 +14,8 @@ class FetchResult {
     required this.wasTruncated,
   });
 
-  /// The canonical URL actually fetched (final URL after any HTTP redirects).
+  /// The URL that was requested for fetching (the post-redirect final URL is not
+  /// recoverable from `http`'s plain `get`, so this is the originally requested URL).
   final String url;
 
   /// Cleaned body text from HtmlExtractor; hard-bounded at kFetchResultCharBound (2,000) chars.

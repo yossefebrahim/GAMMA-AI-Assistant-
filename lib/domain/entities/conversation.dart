@@ -34,7 +34,6 @@ class Conversation {
   Conversation copyWith({
     String? title,
     DateTime? updatedAt,
-    // ignore: avoid_positional_boolean_parameters
     WebAccessOverride? webAccessOverride,
     bool clearWebAccessOverride = false,
   }) {

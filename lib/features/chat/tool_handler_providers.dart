@@ -81,6 +81,17 @@ final toolHandlersProvider = Provider<Map<String, ToolHandler>>((ref) {
   final memRepo = ref.watch(memoryRepositoryProvider);
   // Read the active conversation id lazily (at dispatch time) so this provider does not need to
   // be rebuilt every time the conversation changes — the closure captures [ref], not the state.
+  //
+  // Structural StateError guard shared by both web handlers (contracts/web_research_tools.md): the
+  // triple gate should have prevented declaration without a valid key, so reaching a web handler
+  // with no key is a coding error — surfaced as a ToolFailure (the dispatcher catches the throw),
+  // never a silent call. The StateError type + message are part of that contract.
+  Future<void> requireKey() async {
+    if (!await ref.read(secureKeyStoreProvider).hasValidKey()) {
+      throw StateError('web tools called without a valid key');
+    }
+  }
+
   return <String, ToolHandler>{
     'get_device_info': (args) => deviceInfo.read(args),
     // set_theme (US2) binds the EXISTING persisted theme mechanism; same-theme → idempotent
@@ -158,9 +169,7 @@ final toolHandlersProvider = Provider<Map<String, ToolHandler>>((ref) {
     // service is reached only via the NetworkResearchService interface — no plugin import here
     // (Principle VII).
     'web_search': (args) async {
-      if (!await ref.read(secureKeyStoreProvider).hasValidKey()) {
-        throw StateError('web tools called without a valid key');
-      }
+      await requireKey();
       final query = args['query'] as String;
       final results = await ref
           .read(networkResearchServiceProvider)
@@ -197,9 +206,7 @@ final toolHandlersProvider = Provider<Map<String, ToolHandler>>((ref) {
     // the triple gate is true; the registry/handler congruence test asserts the map covers exactly
     // the declared names.
     'fetch_page': (args) async {
-      if (!await ref.read(secureKeyStoreProvider).hasValidKey()) {
-        throw StateError('web tools called without a valid key');
-      }
+      await requireKey();
       final url = args['url'] as String;
       final result = await ref
           .read(networkResearchServiceProvider)

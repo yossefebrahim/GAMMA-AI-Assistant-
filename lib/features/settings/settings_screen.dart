@@ -2,10 +2,12 @@ import 'package:ai_assistant/app/router.dart';
 import 'package:ai_assistant/app/theme/app_colors.dart';
 import 'package:ai_assistant/app/theme/app_spacing.dart';
 import 'package:ai_assistant/app/theme/app_text.dart';
+import 'package:ai_assistant/core/byte_format.dart';
 import 'package:ai_assistant/core/model_catalog.dart';
 import 'package:ai_assistant/data/repositories/settings_repository.dart';
 import 'package:ai_assistant/domain/entities/app_settings.dart';
 import 'package:ai_assistant/features/settings/settings_controller.dart';
+import 'package:ai_assistant/features/settings/widgets/settings_section_header.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -36,7 +38,7 @@ class SettingsScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: AppSpacing.s8),
         children: [
-          const _SectionHeader(label: 'model'),
+          const SettingsSectionHeader(label: 'model'),
           ListTile(
             contentPadding: const EdgeInsets.symmetric(
               horizontal: AppSpacing.s16,
@@ -52,7 +54,7 @@ class SettingsScreen extends ConsumerWidget {
                 AppText.spec(
                   storage.maybeWhen(
                     data: (bytes) =>
-                        bytes == null ? 'not installed' : _formatBytes(bytes),
+                        bytes == null ? 'not installed' : formatBytes(bytes),
                     orElse: () => '…',
                   ),
                 ),
@@ -69,7 +71,7 @@ class SettingsScreen extends ConsumerWidget {
             ),
           ),
           const Divider(height: AppSpacing.hairline),
-          const _SectionHeader(label: 'appearance'),
+          const SettingsSectionHeader(label: 'appearance'),
           for (final mode in AppThemeMode.values)
             ListTile(
               contentPadding: const EdgeInsets.symmetric(
@@ -85,7 +87,7 @@ class SettingsScreen extends ConsumerWidget {
                   ref.read(settingsControllerProvider.notifier).setTheme(mode),
             ),
           const Divider(height: AppSpacing.hairline),
-          const _SectionHeader(label: 'memory'),
+          const SettingsSectionHeader(label: 'memory'),
           ListTile(
             key: memoryRowKey,
             contentPadding: const EdgeInsets.symmetric(
@@ -108,7 +110,7 @@ class SettingsScreen extends ConsumerWidget {
             onTap: () => Navigator.of(context).pushNamed(AppRoutes.memory),
           ),
           const Divider(height: AppSpacing.hairline),
-          const _SectionHeader(label: 'web research'),
+          const SettingsSectionHeader(label: 'web research'),
           ListTile(
             key: webResearchRowKey,
             contentPadding: const EdgeInsets.symmetric(
@@ -166,44 +168,5 @@ class SettingsScreen extends ConsumerWidget {
       // Reclaimed → return to onboarding (no model installed anymore).
       await navigator.pushNamedAndRemoveUntil(AppRoutes.root, (route) => false);
     }
-  }
-
-  static String _formatBytes(int bytes) {
-    if (bytes <= 0) return '0B';
-    const units = ['B', 'KB', 'MB', 'GB'];
-    var size = bytes.toDouble();
-    var unit = 0;
-    while (size >= 1024 && unit < units.length - 1) {
-      size /= 1024;
-      unit++;
-    }
-    final decimals = (size >= 10 || unit == 0) ? 0 : 1;
-    return '${size.toStringAsFixed(decimals)}${units[unit]}';
-  }
-}
-
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colors = theme.extension<AppColors>()!;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.s16,
-        AppSpacing.s16,
-        AppSpacing.s16,
-        AppSpacing.s8,
-      ),
-      child: Text(
-        AppText.spec(label),
-        style: theme.textTheme.labelSmall?.copyWith(
-          color: colors.textSecondary,
-        ),
-      ),
-    );
   }
 }

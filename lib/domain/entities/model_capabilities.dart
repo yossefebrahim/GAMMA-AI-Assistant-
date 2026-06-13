@@ -2,9 +2,11 @@ import 'package:meta/meta.dart';
 
 /// Capabilities of the active model, surfaced as DATA (Constitution Principle III).
 ///
-/// The UI renders input affordances from this value object, never from hardcoded per-model
-/// branches. This slice restricts interaction to text (FR-016) via scope, so non-text modalities
-/// are read but not exposed.
+/// The UI gates input affordances (image/audio pickers) and the seam gates tool declaration
+/// ([functionCalling]) from this value object, never from hardcoded per-model branches — the
+/// shared mechanism across features 002 (vision), 003 (audio), and 004–006 (function calling +
+/// memory + web). Each feature reads the flag it owns; an unsupported modality is simply not
+/// exposed.
 @immutable
 class ModelCapabilities {
   const ModelCapabilities({
@@ -22,7 +24,7 @@ class ModelCapabilities {
   final bool functionCalling;
   final bool thinking;
 
-  /// The capability set this slice ships against (FR-016).
+  /// The text-only capability set (no image/audio/tools) — a convenient default and test fixture.
   static const ModelCapabilities textOnly = ModelCapabilities();
 
   @override

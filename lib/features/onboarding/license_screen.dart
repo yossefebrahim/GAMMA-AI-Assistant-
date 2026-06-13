@@ -5,6 +5,7 @@ import 'package:ai_assistant/app/theme/app_colors.dart';
 import 'package:ai_assistant/app/theme/app_spacing.dart';
 import 'package:ai_assistant/app/theme/app_text.dart';
 import 'package:ai_assistant/app/widgets/primary_button.dart';
+import 'package:ai_assistant/core/model_catalog.dart';
 import 'package:ai_assistant/domain/entities/device_capability.dart';
 import 'package:ai_assistant/features/onboarding/onboarding_controller.dart';
 import 'package:flutter/material.dart';
@@ -72,7 +73,7 @@ class _LicenseScreenState extends ConsumerState<LicenseScreen> {
             children: [
               const SizedBox(height: AppSpacing.s8),
               Text(
-                'the model ( ${'gemma 4 e2b'} )',
+                'the model ( ${ModelCatalog.displayName} )',
                 style: theme.textTheme.titleLarge,
               ),
               const SizedBox(height: AppSpacing.s16),

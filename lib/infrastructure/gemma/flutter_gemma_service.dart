@@ -268,19 +268,19 @@ class FlutterGemmaService implements GemmaService {
     parameters: spec.parameters,
   );
 
-  @override
-  Stream<GenerationEvent> generate({
-    required List<ChatTurn> history,
-    required String prompt,
-    ImageInput? image,
-    AudioInput? audio,
-  }) async* {
+  /// The four state-free argument-contract gates for [generate], extracted verbatim so the stream
+  /// body reads as a single concern. Throws synchronously (a programmer error, not an async
+  /// failure) — order preserved so the same first-failing gate still wins.
+  void _assertGenerateContract({
+    required InferenceChat? chat,
+    required ImageInput? image,
+    required AudioInput? audio,
+  }) {
     // One attachment per message — audio XOR image (003 guarantee 14, spec Q3). State-free, so the
     // contract is unit-testable without a device.
     if (image != null && audio != null) {
       throw StateError('generate() called with both an image and audio');
     }
-    final chat = _chat;
     if (!_loaded || chat == null) {
       throw StateError('generate() called with no model loaded');
     }
@@ -296,6 +296,69 @@ class FlutterGemmaService implements GemmaService {
         'generate(audio:) called while the model does not support audio',
       );
     }
+  }
+
+  /// Map a plugin [ModelResponse] to a [ToolCallRequested], or null for a non-tool response. Single
+  /// (`FunctionCallResponse`) becomes a one-call event; parallel calls collapse to the FIRST plus
+  /// `extraCallCount` (`calls.length - 1`) — the controller chips-and-skips the extras
+  /// (FR-006/FR-024). Shared by both stream loops; call-site-specific side effects (the warm-session
+  /// `sawToolCall`/`_awaitingToolResult` flags) stay at the call sites.
+  ToolCallRequested? _toToolCallEvent(ModelResponse response) {
+    if (response is FunctionCallResponse) {
+      return ToolCallRequested(
+        response.name,
+        Map<String, Object?>.from(response.args),
+      );
+    }
+    if (response is ParallelFunctionCallResponse) {
+      final calls = response.calls;
+      final first = calls.first;
+      return ToolCallRequested(
+        first.name,
+        Map<String, Object?>.from(first.args),
+        extraCallCount: calls.length - 1,
+      );
+    }
+    return null;
+  }
+
+  /// Commit the warm fingerprints for a clean, tool-free text turn (guarded by the caller on
+  /// `epoch == _sessionEpoch && !sawToolCall`). A tool turn leaves the session dirty so the next
+  /// send replays fully.
+  void _commitWarmFingerprints({
+    required List<_TurnFingerprint> fingerprints,
+    required String prompt,
+    required String reply,
+    required ImageInput? image,
+    required AudioInput? audio,
+  }) {
+    _sessionTurns = [
+      ...fingerprints,
+      _TurnFingerprint(
+        isUser: true,
+        text: prompt,
+        imageByteLength: image?.bytes.length,
+        audioByteLength: audio?.bytes.length,
+      ),
+      _TurnFingerprint(
+        isUser: false,
+        text: reply,
+        imageByteLength: null,
+        audioByteLength: null,
+      ),
+    ];
+  }
+
+  @override
+  Stream<GenerationEvent> generate({
+    required List<ChatTurn> history,
+    required String prompt,
+    ImageInput? image,
+    AudioInput? audio,
+  }) async* {
+    _assertGenerateContract(chat: _chat, image: image, audio: audio);
+    // _assertGenerateContract has proven _chat is non-null; bind it for the body.
+    final chat = _chat!;
 
     final involvesImage =
         image != null || history.any((turn) => turn.image != null);
@@ -332,28 +395,16 @@ class FlutterGemmaService implements GemmaService {
             reply.write(emit);
             yield TextDelta(emit);
           }
-        } else if (response is FunctionCallResponse) {
+          continue;
+        }
+        final toolCall = _toToolCallEvent(response);
+        if (toolCall != null) {
           // End-of-stream call (guarantee 21). The withheld text was the raw-JSON leak — discard it.
+          // (Parallel calls already collapsed to first + extraCallCount, FR-006/FR-024.)
           sawToolCall = true;
           filter.discardOnToolCall();
           _awaitingToolResult = true;
-          yield ToolCallRequested(
-            response.name,
-            Map<String, Object?>.from(response.args),
-          );
-        } else if (response is ParallelFunctionCallResponse) {
-          // Parallel calls collapse to ONE event: first + extraCallCount (FR-006/FR-024 handled by
-          // the controller).
-          sawToolCall = true;
-          filter.discardOnToolCall();
-          _awaitingToolResult = true;
-          final calls = response.calls;
-          final first = calls.first;
-          yield ToolCallRequested(
-            first.name,
-            Map<String, Object?>.from(first.args),
-            extraCallCount: calls.length - 1,
-          );
+          yield toolCall;
         }
       }
 
@@ -369,21 +420,13 @@ class FlutterGemmaService implements GemmaService {
       // Commit warm fingerprints ONLY on a clean, tool-free text turn (a tool turn leaves the
       // session dirty so the next send replays fully).
       if (epoch == _sessionEpoch && !sawToolCall) {
-        _sessionTurns = [
-          ...fingerprints,
-          _TurnFingerprint(
-            isUser: true,
-            text: prompt,
-            imageByteLength: image?.bytes.length,
-            audioByteLength: audio?.bytes.length,
-          ),
-          _TurnFingerprint(
-            isUser: false,
-            text: reply.toString(),
-            imageByteLength: null,
-            audioByteLength: null,
-          ),
-        ];
+        _commitWarmFingerprints(
+          fingerprints: fingerprints,
+          prompt: prompt,
+          reply: reply.toString(),
+          image: image,
+          audio: audio,
+        );
       }
     } catch (error) {
       if (error is StateError) rethrow;
@@ -424,40 +467,27 @@ class FlutterGemmaService implements GemmaService {
     _sessionTurns = null;
 
     final filter = LeakFilter(active: _supportsFunctionCalls);
-    try {
-      // The plugin reaches the model as a user-role `<tool_response>` block on Android/.litertlm.
-      await chat.addQuery(
-        Message.toolResponse(toolName: toolName, response: result),
-      );
-      await for (final response in chat.generateChatResponseAsync()) {
-        if (response is TextResponse) {
-          final emit = filter.process(response.token);
-          if (emit.isNotEmpty) yield TextDelta(emit);
-        } else if (response is FunctionCallResponse) {
-          // A SECOND call on resume is surfaced, not executed (the controller chips-and-skips it,
-          // FR-006/FR-024).
-          filter.discardOnToolCall();
-          yield ToolCallRequested(
-            response.name,
-            Map<String, Object?>.from(response.args),
-          );
-        } else if (response is ParallelFunctionCallResponse) {
-          filter.discardOnToolCall();
-          final calls = response.calls;
-          final first = calls.first;
-          yield ToolCallRequested(
-            first.name,
-            Map<String, Object?>.from(first.args),
-            extraCallCount: calls.length - 1,
-          );
-        }
+    // No try/catch: any error propagates naturally (the prior try only rethrew on every branch).
+    // The plugin reaches the model as a user-role `<tool_response>` block on Android/.litertlm.
+    await chat.addQuery(
+      Message.toolResponse(toolName: toolName, response: result),
+    );
+    await for (final response in chat.generateChatResponseAsync()) {
+      if (response is TextResponse) {
+        final emit = filter.process(response.token);
+        if (emit.isNotEmpty) yield TextDelta(emit);
+        continue;
       }
-      final flushed = filter.flushOnText();
-      if (flushed.isNotEmpty) yield TextDelta(flushed);
-    } catch (error) {
-      if (error is StateError) rethrow;
-      rethrow;
+      final toolCall = _toToolCallEvent(response);
+      if (toolCall != null) {
+        // A SECOND call on resume is surfaced, not executed (the controller chips-and-skips it,
+        // FR-006/FR-024). Parallel calls already collapsed to first + extraCallCount.
+        filter.discardOnToolCall();
+        yield toolCall;
+      }
     }
+    final flushed = filter.flushOnText();
+    if (flushed.isNotEmpty) yield TextDelta(flushed);
   }
 
   /// Whether the native session already holds exactly [fingerprints] — the warm fast-path test.
