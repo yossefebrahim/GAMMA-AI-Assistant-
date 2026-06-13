@@ -39,16 +39,11 @@ abstract final class FactsBlockComposer {
     // Sort defensively: primary key = category enum index (declaration order); secondary key =
     // updatedAt desc (most recent first). The repository already returns this order, but the spec
     // says "don't assume".
-    final sorted = memories.toList()
-      ..sort((a, b) {
-        final catCmp = a.category.index.compareTo(b.category.index);
-        if (catCmp != 0) return catCmp;
-        return b.updatedAt.compareTo(a.updatedAt); // desc
-      });
+    final sorted = memories.toList()..sort(_displayOrder);
 
     // Apply the fact-count cap (oldest = tail of the sorted list after desc-within-category sort;
     // globally oldest = lowest updatedAt overall). Drop from oldest first.
-    List<Memory> capped = _dropOldestToFitCount(sorted, _maxFacts);
+    var capped = _dropOldestToFitCount(sorted, _maxFacts);
 
     // Apply the character cap iteratively: build → measure → drop oldest → repeat.
     // This is O(n²) in the worst case but n ≤ 20 so the cost is negligible.
@@ -78,11 +73,15 @@ abstract final class FactsBlockComposer {
       ..sort((a, b) => a.updatedAt.compareTo(b.updatedAt));
     final keep = byAge.sublist(byAge.length - max); // keep the newest `max`
     // Re-sort the kept subset into display order (category asc, updatedAt desc).
-    return keep..sort((a, b) {
-      final catCmp = a.category.index.compareTo(b.category.index);
-      if (catCmp != 0) return catCmp;
-      return b.updatedAt.compareTo(a.updatedAt);
-    });
+    return keep..sort(_displayOrder);
+  }
+
+  /// Display-order comparator: primary key = category enum index (declaration order); secondary
+  /// key = `updatedAt` desc (most recent first).
+  static int _displayOrder(Memory a, Memory b) {
+    final catCmp = a.category.index.compareTo(b.category.index);
+    if (catCmp != 0) return catCmp;
+    return b.updatedAt.compareTo(a.updatedAt); // desc
   }
 
   /// Remove the single globally-oldest fact (lowest `updatedAt`), preserving display order.

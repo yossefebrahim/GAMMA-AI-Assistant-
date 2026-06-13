@@ -3,6 +3,7 @@ import 'package:ai_assistant/app/theme/app_spacing.dart';
 import 'package:ai_assistant/app/theme/app_text.dart';
 import 'package:ai_assistant/data/repositories/settings_repository.dart';
 import 'package:ai_assistant/features/settings/web_research_controller.dart';
+import 'package:ai_assistant/features/settings/widgets/settings_section_header.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -114,7 +115,7 @@ class _WebResearchSettingsScreenState
         padding: const EdgeInsets.symmetric(vertical: AppSpacing.s8),
         children: [
           // ── Global toggle ────────────────────────────────────────────────────
-          const _SectionHeader(label: 'web access'),
+          const SettingsSectionHeader(label: 'web access'),
           SwitchListTile(
             key: WebResearchSettingsScreen.toggleKey,
             contentPadding: const EdgeInsets.symmetric(
@@ -160,7 +161,7 @@ class _WebResearchSettingsScreenState
           const Divider(height: AppSpacing.hairline),
 
           // ── BYOK key ─────────────────────────────────────────────────────────
-          const _SectionHeader(label: 'tavily key'),
+          const SettingsSectionHeader(label: 'tavily key'),
           if (showField) ...[
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: AppSpacing.s16),
@@ -246,7 +247,7 @@ class _WebResearchSettingsScreenState
           const Divider(height: AppSpacing.hairline),
 
           // ── Privacy disclosures (FR-002 — all three mandatory, lowercase) ────
-          const _SectionHeader(label: 'privacy'),
+          const SettingsSectionHeader(label: 'privacy'),
           const _Disclosure(
             text: 'search queries are sent to tavily\'s servers',
           ),
@@ -295,32 +296,6 @@ class _Disclosure extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colors = theme.extension<AppColors>()!;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.s16,
-        AppSpacing.s16,
-        AppSpacing.s16,
-        AppSpacing.s8,
-      ),
-      child: Text(
-        AppText.spec(label),
-        style: theme.textTheme.labelSmall?.copyWith(
-          color: colors.textSecondary,
-        ),
       ),
     );
   }

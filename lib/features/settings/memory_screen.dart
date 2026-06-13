@@ -5,6 +5,7 @@ import 'package:ai_assistant/data/repositories/drift_memory_repository.dart';
 import 'package:ai_assistant/data/repositories/settings_repository.dart';
 import 'package:ai_assistant/domain/entities/memory.dart';
 import 'package:ai_assistant/features/settings/memory_controller.dart';
+import 'package:ai_assistant/features/settings/widgets/settings_section_header.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -49,7 +50,7 @@ class MemoryScreen extends ConsumerWidget {
         padding: const EdgeInsets.symmetric(vertical: AppSpacing.s8),
         children: [
           // ── Toggle ──────────────────────────────────────────────────────────
-          const _SectionHeader(label: 'memory'),
+          const SettingsSectionHeader(label: 'memory'),
           SwitchListTile(
             key: toggleKey,
             contentPadding: const EdgeInsets.symmetric(
@@ -83,7 +84,7 @@ class MemoryScreen extends ConsumerWidget {
           const Divider(height: AppSpacing.hairline),
 
           // ── Facts by category ───────────────────────────────────────────────
-          const _SectionHeader(label: 'facts'),
+          const SettingsSectionHeader(label: 'facts'),
           memoriesAsync.when(
             loading: () => const Padding(
               padding: EdgeInsets.all(AppSpacing.s24),
@@ -467,34 +468,6 @@ class _EmptyState extends StatelessWidget {
           style: theme.textTheme.bodyMedium?.copyWith(
             color: colors.textSecondary,
           ),
-        ),
-      ),
-    );
-  }
-}
-
-// ── Section header (mirrors settings_screen.dart _SectionHeader) ───────────────
-
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colors = theme.extension<AppColors>()!;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.s16,
-        AppSpacing.s16,
-        AppSpacing.s16,
-        AppSpacing.s8,
-      ),
-      child: Text(
-        AppText.spec(label),
-        style: theme.textTheme.labelSmall?.copyWith(
-          color: colors.textSecondary,
         ),
       ),
     );

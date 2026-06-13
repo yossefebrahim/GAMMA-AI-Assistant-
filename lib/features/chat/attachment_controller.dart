@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:ai_assistant/domain/services/media_permission_service.dart';
 import 'package:ai_assistant/domain/services/media_picker_service.dart';
 import 'package:ai_assistant/features/chat/chat_providers.dart';
@@ -104,7 +106,11 @@ class AttachmentController extends Notifier<AttachmentState> {
       // (with its note, set by the recording controller) ONLY for a genuinely loaded
       // audio-incapable model — never during loading/error (the 002 conflation lesson).
       if (!next.audio && ready) {
-        ref.read(recordingControllerProvider.notifier).clearForCapabilityFlip();
+        unawaited(
+          ref
+              .read(recordingControllerProvider.notifier)
+              .clearForCapabilityFlip(),
+        );
       }
     });
     return const AttachmentState();
@@ -180,7 +186,9 @@ class AttachmentController extends Notifier<AttachmentState> {
     final recording = ref.read(recordingControllerProvider);
     final replacedClip = recording.hasClip || recording.isRecording;
     if (replacedClip) {
-      ref.read(recordingControllerProvider.notifier).discardForImageAttach();
+      unawaited(
+        ref.read(recordingControllerProvider.notifier).discardForImageAttach(),
+      );
     }
     state = AttachmentState(
       pending: PendingAttachment(path: picked.path, mimeType: picked.mimeType),

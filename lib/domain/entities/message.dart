@@ -1,5 +1,6 @@
 import 'package:ai_assistant/domain/entities/audio_attachment.dart';
 import 'package:ai_assistant/domain/entities/image_attachment.dart';
+import 'package:ai_assistant/domain/entities/map_equality.dart';
 import 'package:ai_assistant/domain/entities/tool_outcome.dart';
 import 'package:meta/meta.dart';
 
@@ -145,9 +146,9 @@ class Message {
       other.image == image &&
       other.audio == audio &&
       other.toolName == toolName &&
-      _mapEquals(other.toolArgs, toolArgs) &&
+      mapEquals(other.toolArgs, toolArgs) &&
       other.toolStatus == toolStatus &&
-      _mapEquals(other.toolResult, toolResult);
+      mapEquals(other.toolResult, toolResult);
 
   @override
   int get hashCode => Object.hash(
@@ -162,25 +163,7 @@ class Message {
     audio,
     toolName,
     toolStatus,
-    _mapHash(toolArgs),
-    _mapHash(toolResult),
+    mapHash(toolArgs),
+    mapHash(toolResult),
   );
-}
-
-bool _mapEquals(Map<String, Object?>? a, Map<String, Object?>? b) {
-  if (a == null || b == null) return a == b;
-  if (a.length != b.length) return false;
-  for (final entry in a.entries) {
-    if (!b.containsKey(entry.key) || b[entry.key] != entry.value) return false;
-  }
-  return true;
-}
-
-int _mapHash(Map<String, Object?>? map) {
-  if (map == null) return 0;
-  var hash = 0;
-  for (final entry in map.entries) {
-    hash ^= Object.hash(entry.key, entry.value);
-  }
-  return hash;
 }

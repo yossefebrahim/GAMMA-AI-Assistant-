@@ -16,9 +16,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// `override.effectiveWebEnabled(global)`; a visible active indicator (filled globe + a hairline
 /// accent ring) is shown whenever that resolves true (FR-029).
 ///
-/// Visible only when the active model can call tools AND a Tavily key is stored — there is no point
-/// offering a per-conversation web toggle when web tools can never be declared regardless of the
-/// override (the same structural pre-condition the triple gate enforces in [modelSessionProvider]).
+/// Visible only when the active model can call tools (the sole render guard in `composer.dart`
+/// checks `capabilities.functionCalling`) — there is no point offering a per-conversation web toggle
+/// when the model can never declare tools. Function calling is a necessary but not sufficient
+/// condition for web tools to be ACTIVE: effective enablement still requires a stored Tavily key via
+/// the triple gate (`functionCalling && effectiveWebEnabled && hasValidKey`) enforced in
+/// [modelSessionProvider]. The toggle can therefore show even without a key — flipping it on simply
+/// has no effect until a key is added.
 ///
 /// Tapping persists the new override and recreates the session with the recomputed tool list
 /// (handled by [ChatController.toggleWebAccess], T045) BEFORE the next user turn (FR-032).
@@ -68,8 +72,9 @@ class WebToggleButton extends ConsumerWidget {
       message: tooltip,
       child: IconButton(
         key: WebToggleButton.buttonKey,
-        // Disabled until the thread exists so the persisted override has a row to write to; an
-        // unsaved fresh thread still shows the inherited global state.
+        // Always tappable. Before a thread exists there is no row to persist the override against,
+        // so the tap is a no-op ([ChatController.toggleWebAccess] returns early when
+        // `conversationId == null`); an unsaved fresh thread still shows the inherited global state.
         onPressed: () => ref
             .read(chatControllerProvider.notifier)
             .toggleWebAccess(override.next),

@@ -5,6 +5,7 @@ import 'package:ai_assistant/app/theme/app_colors.dart';
 import 'package:ai_assistant/app/theme/app_spacing.dart';
 import 'package:ai_assistant/app/theme/app_text.dart';
 import 'package:ai_assistant/app/widgets/primary_button.dart';
+import 'package:ai_assistant/core/byte_format.dart';
 import 'package:ai_assistant/core/model_catalog.dart';
 import 'package:ai_assistant/features/download/download_controller.dart';
 import 'package:flutter/material.dart';
@@ -31,19 +32,6 @@ class _DownloadScreenState extends ConsumerState<DownloadScreen> {
     });
   }
 
-  String _formatBytes(int bytes) {
-    if (bytes <= 0) return '0B';
-    const units = ['B', 'KB', 'MB', 'GB'];
-    var size = bytes.toDouble();
-    var unit = 0;
-    while (size >= 1024 && unit < units.length - 1) {
-      size /= 1024;
-      unit++;
-    }
-    final decimals = (size >= 10 || unit == 0) ? 0 : 1;
-    return '${size.toStringAsFixed(decimals)}${units[unit]}';
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -61,8 +49,8 @@ class _DownloadScreenState extends ConsumerState<DownloadScreen> {
     });
 
     final bytesLine = state.totalBytes != null
-        ? '${_formatBytes(state.downloadedBytes)} / ${_formatBytes(state.totalBytes!)}'
-        : _formatBytes(state.downloadedBytes);
+        ? '${formatBytes(state.downloadedBytes)} / ${formatBytes(state.totalBytes!)}'
+        : formatBytes(state.downloadedBytes);
 
     return Scaffold(
       body: SafeArea(

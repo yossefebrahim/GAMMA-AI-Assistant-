@@ -9,6 +9,9 @@ import 'package:meta/meta.dart';
 /// The bytes are read just-in-time from the stored file and are held only for the duration of a
 /// `generate` call — never retained between turns (Principle VIII). Never persisted; the persisted
 /// counterpart is [ImageAttachment].
+///
+/// Uses identity equality on purpose: a transient per-call byte carrier is never compared, and
+/// value equality over [Uint8List] would scan the whole image needlessly.
 @immutable
 class ImageInput {
   const ImageInput(this.bytes, {this.mimeType});

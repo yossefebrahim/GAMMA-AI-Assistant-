@@ -10,6 +10,9 @@ import 'package:meta/meta.dart';
 /// only for the duration of a `generate` call — never retained between turns (Principle VIII).
 /// Never persisted; the persisted counterpart is [AudioAttachment]. Duration is derivable via
 /// `AudioConstants.durationFromBytes`.
+///
+/// Uses identity equality on purpose: a transient per-call byte carrier is never compared, and
+/// value equality over [Uint8List] would scan the whole clip needlessly.
 @immutable
 class AudioInput {
   const AudioInput(this.bytes, {this.mimeType});

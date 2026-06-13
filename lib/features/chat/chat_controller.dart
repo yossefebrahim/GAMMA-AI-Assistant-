@@ -169,69 +169,27 @@ class ChatController extends Notifier<ChatState> {
     // Persist the attachment bytes as an app-private file FIRST, and read the bytes just-in-time
     // for this prompt (FR-012, R5/R6). An oversized/unreadable file is rejected here, BEFORE any
     // row is created (002 DF-2: FileSystemException is caught alongside ArgumentError) — surface
-    // "pick another" / "record again" and abort the send.
+    // "pick another" / "record again" and abort the send. A null result signals a rejection that
+    // the helper has already surfaced; abort the send.
     ImageAttachment? imageAttachment;
     ImageInput? imageInput;
     if (image != null) {
-      try {
-        final storedPath = await imageStore.persist(
-          image.path,
-          extension: mediaFileExtension(
-            mimeType: image.mimeType,
-            path: image.path,
-            fallback: '.jpg',
-          ),
-        );
-        imageAttachment = ImageAttachment(
-          path: storedPath,
-          mimeType: image.mimeType,
-        );
-        imageInput = ImageInput(
-          await imageStore.readBytes(storedPath),
-          mimeType: image.mimeType,
-        );
-      } on ArgumentError {
-        ref.read(attachmentControllerProvider.notifier).rejectPending();
-        return;
-      } on FileSystemException {
-        ref.read(attachmentControllerProvider.notifier).rejectPending();
-        return;
-      }
+      final persisted = await _persistImage(image, imageStore);
+      if (persisted == null) return;
+      imageAttachment = persisted.attachment;
+      imageInput = persisted.input;
     }
     AudioAttachment? audioAttachment;
     AudioInput? audioInput;
     if (audio != null) {
-      final mimeType = audio.mimeType ?? AudioConstants.wavMimeType;
-      try {
-        final storedPath = await audioStore.persist(
-          audio.path,
-          mimeType: mimeType,
-        );
-        audioAttachment = AudioAttachment(path: storedPath, mimeType: mimeType);
-        audioInput = AudioInput(
-          await audioStore.readBytes(storedPath),
-          mimeType: mimeType,
-        );
-      } on ArgumentError {
-        await ref.read(recordingControllerProvider.notifier).rejectPending();
-        return;
-      } on FileSystemException {
-        await ref.read(recordingControllerProvider.notifier).rejectPending();
-        return;
-      }
+      final persisted = await _persistAudio(audio, audioStore);
+      if (persisted == null) return;
+      audioAttachment = persisted.attachment;
+      audioInput = persisted.input;
     }
 
-    var conversationId = state.conversationId;
-    if (conversationId == null) {
-      // Lazy-create on first send of a fresh thread: the row didn't exist until now, so update the
-      // provenance notifier too or a first-message `remember_fact` would still capture a null id
-      // (F2 — the lazy-create gap the audit caught).
-      conversationId = (await repo.createConversation()).id;
-      ref.read(activeConversationIdProvider.notifier).set(conversationId);
-    }
-
-    await repo.appendUserMessage(
-      conversationId,
+    final conversationId = await _beginUserTurn(
+      repo,
       trimmed,
       image: imageAttachment,
       audio: audioAttachment,
@@ -322,6 +280,92 @@ class ChatController extends Notifier<ChatState> {
     } finally {
       state = state.copyWith(isGenerating: false);
     }
+  }
+
+  /// Persist a pending image to app-private storage and read its bytes just-in-time (FR-012,
+  /// R5/R6). Returns the attachment (for the user row) + input (for `generate`) pair, or null when
+  /// the file is oversized/unreadable — in which case the composer is asked to surface "pick
+  /// another" (002 DF-2: FileSystemException is caught alongside ArgumentError) and the send aborts.
+  Future<({ImageAttachment attachment, ImageInput input})?> _persistImage(
+    PendingAttachment image,
+    ImageFileStore imageStore,
+  ) async {
+    try {
+      final storedPath = await imageStore.persist(
+        image.path,
+        extension: mediaFileExtension(
+          mimeType: image.mimeType,
+          path: image.path,
+          fallback: '.jpg',
+        ),
+      );
+      return (
+        attachment: ImageAttachment(path: storedPath, mimeType: image.mimeType),
+        input: ImageInput(
+          await imageStore.readBytes(storedPath),
+          mimeType: image.mimeType,
+        ),
+      );
+    } on ArgumentError {
+      ref.read(attachmentControllerProvider.notifier).rejectPending();
+      return null;
+    } on FileSystemException {
+      ref.read(attachmentControllerProvider.notifier).rejectPending();
+      return null;
+    }
+  }
+
+  /// The audio edition of [_persistImage] (003 FR-022): persist the clip, read its bytes, and return
+  /// the attachment + input pair, or null when the clip is unusable — surfacing "record again" via
+  /// the recording controller and aborting the send.
+  Future<({AudioAttachment attachment, AudioInput input})?> _persistAudio(
+    PendingRecording audio,
+    AudioFileStore audioStore,
+  ) async {
+    final mimeType = audio.mimeType ?? AudioConstants.wavMimeType;
+    try {
+      final storedPath = await audioStore.persist(
+        audio.path,
+        mimeType: mimeType,
+      );
+      return (
+        attachment: AudioAttachment(path: storedPath, mimeType: mimeType),
+        input: AudioInput(
+          await audioStore.readBytes(storedPath),
+          mimeType: mimeType,
+        ),
+      );
+    } on ArgumentError {
+      await ref.read(recordingControllerProvider.notifier).rejectPending();
+      return null;
+    } on FileSystemException {
+      await ref.read(recordingControllerProvider.notifier).rejectPending();
+      return null;
+    }
+  }
+
+  /// Lazy-create the conversation on the first send of a fresh thread and append the user turn,
+  /// returning the conversation id. The provenance notifier is updated on a lazy-create too, or a
+  /// first-message `remember_fact` would still capture a null id (F2 — the lazy-create gap the audit
+  /// caught).
+  Future<int> _beginUserTurn(
+    ConversationRepository repo,
+    String text, {
+    ImageAttachment? image,
+    AudioAttachment? audio,
+  }) async {
+    var conversationId = state.conversationId;
+    if (conversationId == null) {
+      conversationId = (await repo.createConversation()).id;
+      ref.read(activeConversationIdProvider.notifier).set(conversationId);
+    }
+    await repo.appendUserMessage(
+      conversationId,
+      text,
+      image: image,
+      audio: audio,
+    );
+    return conversationId;
   }
 
   /// Drain a [GenerationEvent] stream into [assistantId], appending [TextDelta] tokens to [buffer]
@@ -461,10 +505,12 @@ class ChatController extends Notifier<ChatState> {
             MessageStatus.complete,
           );
         }
+        // Normalize the skipped call's args the same way the first-call path does (whole-valued
+        // doubles → int) so the chip display matches even though the call is never executed.
         final secondRowId = await repo.appendToolInvocation(
           conversationId: conversationId,
           toolName: secondCall.name,
-          args: secondCall.args,
+          args: _normalizeToolArgs(secondCall.name, secondCall.args),
         );
         await repo.finalizeToolInvocation(
           secondRowId,
@@ -684,43 +730,59 @@ class ChatController extends Notifier<ChatState> {
         );
       }
     }
-    // Reserve the R6 tool-use system-instruction budget when the active model can call tools
-    // (~40 tokens off the top so a long history can't crowd it out).
-    final reserveToolInstruction = ref
-        .read(modelCapabilitiesProvider)
-        .functionCalling;
-    // Reserve the memory budget too (T025): the facts block (~225 tok) when memory is on AND ≥1
-    // fact exists, and the capture instruction (~86 tok) when function calling AND memory are both
-    // active — mirroring SystemInstructionComposer.compose's gating so the injected block can never
-    // be crowded out by a long history.
-    //
-    // Session-boundary approximation: the reserve reflects CURRENT store state, while the injected
-    // block is fixed at session start. A fact added mid-session reserves before the block exists
-    // (conservative — harmless); facts cleared mid-session under-reserve for an already-injected
-    // block (rare window, corrected at the next openConversation). The alternative — snapshotting
-    // the composed-instruction flags at each startSession/loadModel site — was rejected for a
-    // ≤311-token edge case.
-    final memoryEnabled = ref.read(memoryEnabledProvider);
-    final hasFacts =
-        (await ref.read(memoryRepositoryProvider).activeCount()) > 0;
-    // Reserve the web tool-use budget (~80 tok, 006 T032) when the web tools are declared — the
-    // same triple gate the session provider applies (functionCalling AND webAccessEnabled AND a
-    // valid key), so the injected web tool-use instruction is never crowded out by a long history.
-    final webAccessEnabled = ref.read(webAccessEnabledProvider);
-    final hasValidKey = await ref.read(secureKeyStoreProvider).hasValidKey();
+    final reserves = await _computeReserves();
     return ref
         .read(contextAssemblerProvider)
         .assemble(
           priorMessages,
           images: images,
           audio: audio,
-          reserveToolInstruction: reserveToolInstruction,
-          reserveMemoryBlock: memoryEnabled && hasFacts,
-          reserveMemoryCaptureInstruction:
-              reserveToolInstruction && memoryEnabled,
-          reserveWebTools:
-              reserveToolInstruction && webAccessEnabled && hasValidKey,
+          reserveToolInstruction: reserves.toolInstruction,
+          reserveMemoryBlock: reserves.memoryBlock,
+          reserveMemoryCaptureInstruction: reserves.memoryCaptureInstruction,
+          reserveWebTools: reserves.webTools,
         );
+  }
+
+  /// Compute the system-instruction budget reserves the assembler must keep off the top so a long
+  /// history can never crowd out an injected block. Mirrors `SystemInstructionComposer.compose`'s
+  /// gating so the reserves track what is actually injected at session start:
+  ///   • [toolInstruction] — the R6 tool-use instruction (~40 tok) when the model can call tools.
+  ///   • [memoryBlock] — the facts block (~225 tok) when memory is on AND ≥1 fact exists.
+  ///   • [memoryCaptureInstruction] — the capture instruction (~86 tok) when function calling AND
+  ///     memory are both active.
+  ///   • [webTools] — the web tool-use budget (~80 tok, 006 T032) under the same triple gate the
+  ///     session provider applies (functionCalling AND webAccessEnabled AND a valid key).
+  ///
+  /// Session-boundary approximation: the reserve reflects CURRENT store state, while the injected
+  /// block is fixed at session start. A fact added mid-session reserves before the block exists
+  /// (conservative — harmless); facts cleared mid-session under-reserve for an already-injected
+  /// block (rare window, corrected at the next openConversation). The alternative — snapshotting
+  /// the composed-instruction flags at each startSession/loadModel site — was rejected for a
+  /// ≤311-token edge case.
+  Future<
+    ({
+      bool toolInstruction,
+      bool memoryBlock,
+      bool memoryCaptureInstruction,
+      bool webTools,
+    })
+  >
+  _computeReserves() async {
+    final reserveToolInstruction = ref
+        .read(modelCapabilitiesProvider)
+        .functionCalling;
+    final memoryEnabled = ref.read(memoryEnabledProvider);
+    final hasFacts =
+        (await ref.read(memoryRepositoryProvider).activeCount()) > 0;
+    final webAccessEnabled = ref.read(webAccessEnabledProvider);
+    final hasValidKey = await ref.read(secureKeyStoreProvider).hasValidKey();
+    return (
+      toolInstruction: reserveToolInstruction,
+      memoryBlock: memoryEnabled && hasFacts,
+      memoryCaptureInstruction: reserveToolInstruction && memoryEnabled,
+      webTools: reserveToolInstruction && webAccessEnabled && hasValidKey,
+    );
   }
 
   /// Halt the in-flight reply within ~1s (FR-014); the partial text is retained by [send]'s

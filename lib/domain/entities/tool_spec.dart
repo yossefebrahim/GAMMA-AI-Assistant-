@@ -1,7 +1,7 @@
 import 'package:meta/meta.dart';
 
-/// Whether a tool only reads device/app state or changes it. Inert in v1 — all four tools
-/// auto-execute (spec Q1) — but REQUIRED data so a future confirmation policy is a data change,
+/// Whether a tool only reads device/app state or changes it. Inert in v1 — every registered tool
+/// auto-executes (spec Q1) — but REQUIRED data so a future confirmation policy is a data change,
 /// not a code change (FR-016).
 enum ToolKind { readOnly, stateChanging }
 

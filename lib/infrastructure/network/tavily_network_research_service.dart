@@ -71,8 +71,9 @@ class TavilyNetworkResearchService implements NetworkResearchService {
       rethrow;
     } on TimeoutException {
       throw const TimeoutError();
-    } on SocketException catch (e) {
-      _handleSocketException(e);
+    } on SocketException {
+      // Any socket-level failure = no connectivity or host unreachable.
+      throw const OfflineError();
     }
 
     _mapTavilyStatusCode(response.statusCode, response.body);
@@ -195,21 +196,5 @@ class TavilyNetworkResearchService implements NetworkResearchService {
       throw RateLimitError(httpStatusCode: statusCode, responseBody: body);
     }
     throw ProviderError(httpStatusCode: statusCode, responseBody: body);
-  }
-
-  // Whether a SocketException signals no-route / no-network connectivity.
-  bool _isNoRouteErrno(SocketException e) {
-    final msg = e.message.toLowerCase();
-    return msg.contains('network is unreachable') ||
-        msg.contains('no route to host') ||
-        msg.contains('connection refused') ||
-        msg.contains('enetunreach') ||
-        msg.contains('ehostunreach') ||
-        msg.contains('enotconn');
-  }
-
-  Never _handleSocketException(SocketException e) {
-    if (_isNoRouteErrno(e)) throw const OfflineError();
-    throw const OfflineError(); // Any socket-level failure = offline.
   }
 }

@@ -68,16 +68,15 @@ class HtmlExtractor {
   // ── Wikipedia p-only extraction ───────────────────────────────────────────
 
   String _extractWikipedia(Element mwContent) {
-    // Remove known boilerplate within the content area.
-    final copy = mwContent;
+    // Remove known boilerplate within the content area (mutates mwContent in place).
     for (final sel in _boilerplateSelectors) {
-      for (final el in copy.querySelectorAll(sel)) {
+      for (final el in mwContent.querySelectorAll(sel)) {
         el.remove();
       }
     }
 
     // Extract only <p> elements (no navboxes, infoboxes, tables).
-    final paragraphs = copy
+    final paragraphs = mwContent
         .querySelectorAll('p')
         .map((p) => p.text.trim())
         .where((t) => t.isNotEmpty)
@@ -121,12 +120,6 @@ class HtmlExtractor {
   void _removeBoilerplate(Document doc) {
     for (final sel in _boilerplateSelectors) {
       for (final el in doc.querySelectorAll(sel)) {
-        el.remove();
-      }
-    }
-    // Also remove all <script> and <style> by tag (belt + suspenders).
-    for (final tag in ['script', 'style', 'noscript']) {
-      for (final el in doc.querySelectorAll(tag)) {
         el.remove();
       }
     }
