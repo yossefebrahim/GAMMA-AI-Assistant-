@@ -38,21 +38,30 @@ class PlatformDeviceInfoToolService implements DeviceInfoToolService {
   Future<Map<String, Object?>> read(Map<String, Object?> args) async {
     final result = <String, Object?>{};
 
-    // Hardware + OS (device_info_plus). Android-only (Principle IX).
+    // Hardware + OS (device_info_plus). Android + macOS (007 macOS support, FR-009); other
+    // platforms degrade to unknown. `osVersion` is the platform-neutral key; `androidVersion`/
+    // `sdkInt` are retained on Android for backward compatibility.
     try {
       if (Platform.isAndroid) {
         final info = await _deviceInfo.androidInfo;
         result['model'] = '${info.manufacturer} ${info.model}'.trim();
+        result['osVersion'] = 'Android ${info.version.release}';
         result['androidVersion'] = 'Android ${info.version.release}';
         result['sdkInt'] = info.version.sdkInt;
         result['ramTotalMb'] = info.physicalRamSize;
+      } else if (Platform.isMacOS) {
+        final info = await _deviceInfo.macOsInfo;
+        result['model'] = info.model;
+        result['osVersion'] =
+            'macOS ${info.majorVersion}.${info.minorVersion}.${info.patchVersion}';
+        result['ramTotalMb'] = (info.memorySize / (1024 * 1024)).round();
       } else {
         result['model'] = _unknown;
-        result['androidVersion'] = _unknown;
+        result['osVersion'] = _unknown;
       }
     } catch (_) {
       result['model'] = _unknown;
-      result['androidVersion'] = _unknown;
+      result['osVersion'] = _unknown;
     }
 
     // Battery (battery_plus).

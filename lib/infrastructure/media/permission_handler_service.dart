@@ -11,21 +11,33 @@ import 'package:permission_handler/permission_handler.dart';
 /// Android (the Photo Picker). The status mapping is identical for both permissions
 /// (003 contracts/media_permission.md #2).
 class PermissionHandlerService implements MediaPermissionService {
-  @override
-  Future<MediaPermissionStatus> cameraStatus() async =>
-      _map(await Permission.camera.status);
+  /// `permission_handler` implements Android/iOS (+web/windows for some permissions) but has NO
+  /// macOS plugin, so calling `Permission.camera`/`.microphone` on macOS throws
+  /// `MissingPluginException`. On macOS the OS shows its own TCC prompt the first time
+  /// `record_macos` (or a file picker) touches the mic/camera, so the correct behavior is to report
+  /// granted and let that native prompt happen (007 macOS support, FR-007). Mirrors the existing
+  /// off-Android storage short-circuit below.
+  static bool get _usesPermissionHandler => Platform.isAndroid || Platform.isIOS;
 
   @override
-  Future<MediaPermissionStatus> requestCamera() async =>
-      _map(await Permission.camera.request());
+  Future<MediaPermissionStatus> cameraStatus() async => _usesPermissionHandler
+      ? _map(await Permission.camera.status)
+      : MediaPermissionStatus.granted;
 
   @override
-  Future<MediaPermissionStatus> micStatus() async =>
-      _map(await Permission.microphone.status);
+  Future<MediaPermissionStatus> requestCamera() async => _usesPermissionHandler
+      ? _map(await Permission.camera.request())
+      : MediaPermissionStatus.granted;
 
   @override
-  Future<MediaPermissionStatus> requestMic() async =>
-      _map(await Permission.microphone.request());
+  Future<MediaPermissionStatus> micStatus() async => _usesPermissionHandler
+      ? _map(await Permission.microphone.status)
+      : MediaPermissionStatus.granted;
+
+  @override
+  Future<MediaPermissionStatus> requestMic() async => _usesPermissionHandler
+      ? _map(await Permission.microphone.request())
+      : MediaPermissionStatus.granted;
 
   @override
   Future<MediaPermissionStatus> storageStatus() async {
@@ -43,6 +55,9 @@ class PermissionHandlerService implements MediaPermissionService {
 
   @override
   Future<void> openSettings() async {
+    // `openAppSettings()` is also unimplemented on macOS; it is only reached from the storage /
+    // camera / mic permanently-denied paths, none of which occur on macOS (all granted above).
+    if (!_usesPermissionHandler) return;
     await openAppSettings();
   }
 

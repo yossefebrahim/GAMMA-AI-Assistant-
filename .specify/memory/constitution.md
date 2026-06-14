@@ -1,53 +1,62 @@
 <!--
 SYNC IMPACT REPORT
 ==================
-Version change: 1.2.0 → 2.0.0  [MAJOR amendment]
-Bump rationale: Backward-incompatible redefinition of a NON-NEGOTIABLE principle.
-  Principle I ("Privacy Is the Product") previously stated an ABSOLUTE rule: the only
-  permitted outbound call was the one-time model download, and user content could never
-  leave the device under any circumstances. This amendment redefines that rule as
-  on-device-by-default with individually opt-in, off-by-default, visibly-indicated
-  egress for any feature that sends user content off-device. The discipline — opt-in,
-  visible at the moment it happens, graceful offline degradation, auditable, named
-  recipient, justified — remains NON-NEGOTIABLE; only the binary absolute is relaxed
-  to a governed opt-in model. This is a MAJOR bump per the versioning policy: it is a
-  backward-incompatible redefinition of a principle.
+Version change: 2.0.0 → 2.1.0  [MINOR amendment]
+Bump rationale: Additive expansion of platform scope. macOS (Apple Silicon) is added as a
+  sanctioned SECONDARY target alongside Android. This is MINOR (materially expanded guidance /
+  new scope), NOT MAJOR: no existing guarantee is weakened and the Android rules are preserved
+  verbatim — the change only ADDS a platform tier and removes "non-Android platforms" from the
+  Principle IX NON-GOAL list. (Contrast the 1.2.0 → 2.0.0 MAJOR bump, which weakened a
+  NON-NEGOTIABLE privacy guarantee; this amendment weakens nothing.) MAINTAINER NOTE: if you
+  judge relaxing the Principle IX "non-Android out of scope" absolute to be a backward-
+  incompatible redefinition, bump to 3.0.0 instead — the body text is identical either way.
 
-Note on model downloads: model downloads have ALWAYS been network-based (bytes-in).
-  Principle I has never restricted bytes-in; it governs USER CONTENT egress (bytes-out).
-  This amendment makes that distinction explicit.
+Scope of macOS support: Apple Silicon (arm64) ONLY. The flutter_gemma model runtime ships a
+  desktop dart:ffi / Metal backend for macOS at the SAME pinned version used for Android
+  (flutter_gemma ^0.15.0 / 0.15.3 verified) — no version fork, no model-format change
+  (`.litertlm`). Intel (x86_64) macOS, Windows, Linux, and web remain explicit NON-GOALS.
+  macOS is a single-codebase secondary target via platform-conditional provider wiring,
+  NOT a build flavor.
 
 Modified principles:
-  - I. Privacy Is the Product — redefined from absolute-no-egress to on-device-by-default
-       with governed opt-in egress; discipline (opt-in, off by default, visibly indicated,
-       graceful degradation, auditable, named recipient, justified) remains NON-NEGOTIABLE.
-  - II. Offline-First — light reconciliation: explicitly states opt-in network features
-       are enhancements that degrade gracefully, never prerequisites; "app never breaks
-       offline" language made explicit.
+  - V. Graceful Degradation — the "RAM and architecture tiers (non-negotiable)" block is
+       re-expressed PER PLATFORM. Android (arm64-v8a / 8 GB / ~12 GB E4B) is unchanged
+       verbatim; a macOS (Apple Silicon) tier is ADDED (Intel rejected at startup; ≥ 16 GB
+       unified memory for the E4B tier; 8 GB runs E2B with GPU→CPU fallback).
+  - VIII. Resource Hygiene — the Android foreground-service download rule is scoped to Android;
+       platforms without a background-download service (macOS) MAY acquire the model via a
+       user-initiated file-import flow. User-visible / user-deletable model storage still
+       applies on every platform.
+  - IX. Lean Scope — "non-Android platforms" removed from the NON-GOAL list; macOS (Apple
+       Silicon) named a sanctioned secondary target; Windows, Linux, web, and Intel macOS
+       remain NON-GOALS.
 
 Modified sections:
-  - Technology & Platform Constraints → Networking bullet: now reflects (a) one-time
-       model download and (b) explicitly opt-in, off-by-default features that send user
-       content off-device under the Principle I safeguards.
-  - Development Workflow → Privacy gate: content-bearing calls now permitted ONLY when
-       behind an opt-in toggle (off by default), visibly indicated at call time, offline-
-       degrading, named-recipient, and auditable; all other calls must still carry no
-       user content.
+  - Technology & Platform Constraints → Platform, Model Runtime, and Device Baseline bullets
+       now name macOS (Apple Silicon) as a secondary target on the shared runtime pin.
 
-Removed sections: none
+Unchanged (explicitly preserved on macOS):
+  - I. Privacy Is the Product — on-device inference (LiteRT-LM / Metal, no cloud); the opt-in,
+       off-by-default, named-recipient egress discipline is identical. The BYOK key uses the
+       macOS Keychain via the SAME SecureKeyStore seam. (Build-time download of the native
+       runtime dylib by the plugin's build hook is bytes-in tooling, not user-content egress —
+       analogous to the existing model-download carve-out.)
+  - II. Offline-First — web off ⇒ zero network, byte-identical to Android.
+  - VII. Testable Through a Plugin Seam — both grep guards are platform-agnostic; all host
+       tests already run on the macOS dev host.
 
 Templates requiring updates:
-  - .specify/templates/plan-template.md          ✅ no structural edit needed — its
-       Constitution Check section holds only generic placeholder text and resolves the
-       gates dynamically from this constitution file at plan time, so the new opt-in
-       egress safeguards (off by default, visibly indicated, offline-degrading, named
-       recipient, auditable) are gated automatically without editing the template.
+  - .specify/templates/plan-template.md          ✅ no edit — the Constitution Check section
+       resolves gates dynamically from this constitution file at plan time, so the new
+       per-platform tiers gate automatically without editing the template.
   - .specify/templates/spec-template.md          ✅ no change required
   - .specify/templates/tasks-template.md         ✅ no change required
-  - CLAUDE.md / README.md                         ✅ no hardcoded privacy refs to update;
-       the active feature (005-memory) is fully on-device and unaffected by this amendment.
+  - CLAUDE.md                                     ⏳ regenerated by speckit-agent-context-update
+       when 007-macos-support becomes the active feature; the durable "Android-first" guide
+       section should gain a macOS note at that time.
 
-Deferred TODOs: none.
+Deferred TODOs: macOS device tiers (≥ 16 GB E4B threshold, 8 GB E2B floor) are the chosen
+  baseline pending on-device confirmation in the specs/007-macos-support spike.
 -->
 
 # On-Device Gemma Assistant Constitution
@@ -120,7 +129,9 @@ operation, the app MUST fail with clear, honest, actionable guidance, never an u
 crash or out-of-memory kill. Conditions below the required baseline MUST be detected and
 communicated up front, not discovered at runtime.
 
-RAM and architecture tiers (non-negotiable):
+RAM and architecture tiers (non-negotiable), per platform:
+
+**Android:**
 
 - **Hard requirement**: arm64-v8a CPU architecture and ≥ 8 GB RAM. Devices below either
   threshold MUST be rejected at startup with actionable guidance.
@@ -128,6 +139,16 @@ RAM and architecture tiers (non-negotiable):
   upgrade tier MAY be offered to the user.
 - **Borderline devices (exactly 8 GB)**: E2B MUST be used as the default and the E4B tier
   MUST NOT be offered, regardless of user preference.
+
+**macOS (Apple Silicon):**
+
+- **Hard requirement**: Apple Silicon (arm64). Intel (x86_64) Macs MUST be rejected at startup
+  with actionable guidance — the model runtime ships no x86_64 backend, so an unsupported
+  architecture MUST be detected up front, never surfaced as a runtime native-load crash.
+- **Comfortable target**: ≥ 16 GB unified memory. This is the threshold at which the optional
+  E4B upgrade tier MAY be offered to the user.
+- **Minimum (8 GB unified memory)**: E2B MUST be used as the default with GPU→CPU fallback, and
+  the E4B tier MUST NOT be offered, regardless of user preference.
 
 **Rationale**: Large models push device limits hard. Predictable, explained failure
 preserves user trust and prevents data loss from abrupt termination. Explicit RAM
@@ -161,8 +182,10 @@ bulk of the application fast to test and the underlying plugin swappable.
 
 Exactly ONE model MUST be active at a time. Models and inference sessions MUST be explicitly
 released when no longer needed — on model switch, navigation away, or backgrounding as
-appropriate. Downloaded model storage MUST be user-visible and user-deletable. Large
-downloads MUST respect Android foreground-service rules.
+appropriate. Downloaded or imported model storage MUST be user-visible and user-deletable on
+every platform. Large downloads MUST respect Android foreground-service rules on Android; on
+platforms without a background-download service (macOS), large-model acquisition MAY use a
+user-initiated file-import flow instead.
 
 **Rationale**: Models consume gigabytes of RAM and storage. Disciplined lifecycle
 management prevents leaks, OOM kills, and silent disk bloat.
@@ -170,9 +193,13 @@ management prevents leaks, OOM kills, and silent disk bloat.
 ### IX. Lean Scope
 
 The app MUST ship the smallest thing that works, then layer. The following are explicit
-NON-GOALS for v1 and MUST NOT be built until the core experience is solid: cloud sync, user
-accounts, RAG/embeddings, and non-Android platforms. Any new scope MUST be justified against
-the core experience before it is adopted.
+NON-GOALS and MUST NOT be built until the core experience is solid: cloud sync, user accounts,
+RAG/embeddings, and platforms beyond Android and macOS (Apple Silicon) — Windows, Linux, web,
+and Intel macOS remain out of scope. macOS (Apple Silicon) is a sanctioned SECONDARY target
+(added v2.1.0): it MUST be a single codebase reusing the existing seams and the shared
+model-runtime pin via platform-conditional wiring — never a fork of Android behavior nor a
+separate build flavor. Any new scope MUST be justified against the core experience before it is
+adopted.
 
 **Rationale**: A solid, focused core protects the privacy and reliability guarantees;
 premature breadth introduces complexity that undermines them.
@@ -197,16 +224,20 @@ coherent and makes the identity enforceable in review rather than aspirational.
 
 ## Technology & Platform Constraints
 
-- **Platform**: Android first. Non-Android platforms are out of scope for v1 (Principle IX).
+- **Platform**: Android first; macOS (Apple Silicon) is a sanctioned secondary target
+  (v2.1.0, Principle IX). Windows, Linux, web, and Intel macOS remain out of scope.
 - **Language & Framework**: Flutter + Dart.
 - **State Management**: Riverpod.
 - **Persistence**: SQLite (conversations, settings, model registry).
-- **Model Runtime**: flutter_gemma (LiteRT-LM / MediaPipe), `.litertlm` format.
+- **Model Runtime**: flutter_gemma (LiteRT-LM / MediaPipe), `.litertlm` format. The SAME pinned
+  version serves both platforms — the native Android backend and the desktop dart:ffi / Metal
+  backend on macOS (Apple Silicon); no per-platform dependency fork.
   Models: Gemma 4 E2B (~2.4 GB, `ModelType.gemma4`) as primary / default; Gemma 4 E4B
-  (~4.3 GB, `ModelType.gemma4`) as an optional upgrade tier for devices with ≥ 12 GB RAM.
-  Both variants expose identical capabilities (text, image, audio, function calling, thinking);
-  tier selection is a catalog configuration, not an architectural branch.
-- **Device Baseline**: arm64-v8a with 8 GB RAM (Principle V).
+  (~4.3 GB, `ModelType.gemma4`) as an optional upgrade tier (Android ≥ 12 GB RAM; macOS ≥ 16 GB
+  unified memory). Both variants expose identical capabilities (text, image, audio, function
+  calling, thinking); tier selection is a catalog configuration, not an architectural branch.
+- **Device Baseline**: arm64-v8a with 8 GB RAM (Android); Apple Silicon with 8 GB unified memory
+  (macOS) (Principle V).
 - **Networking**: restricted to (a) the one-time model download and (b) explicitly opt-in,
   off-by-default features that send user content off-device under the Principle I safeguards
   (opt-in, visibly indicated at the moment of egress, gracefully degrading offline, auditable,
@@ -257,4 +288,4 @@ Deviations MUST be justified in the plan's Complexity Tracking table; an unjusti
 violation MUST be rejected, or the constitution amended first. Runtime development guidance
 lives in `CLAUDE.md` and the active feature plan.
 
-**Version**: 2.0.0 | **Ratified**: 2026-06-07 | **Last Amended**: 2026-06-12
+**Version**: 2.1.0 | **Ratified**: 2026-06-07 | **Last Amended**: 2026-06-14

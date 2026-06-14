@@ -110,5 +110,40 @@ void main() {
         sub.close();
       },
     );
+
+    test(
+      'on macOS, set_timer is NOT declared but the other tools are (007 FR-008)',
+      () async {
+        expect(ModelCatalog.capabilities.functionCalling, isTrue);
+        final keyStore = FakeSecureKeyStore()..seed('fake-tavily-key');
+        final gemma = FakeGemmaService();
+        final container = makeContainer(
+          isMacOs: true,
+          secureKeyStore: keyStore,
+          overrides: [
+            gemmaServiceProvider.overrideWithValue(gemma),
+            installedModelPathProvider.overrideWith(
+              (ref) async => '/fake/model',
+            ),
+            webAccessEnabledProvider.overrideWith(_AlwaysTrueWebAccess.new),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        final sub = container.listen(modelSessionProvider, (_, _) {});
+        await container.read(modelSessionProvider.future);
+
+        final names = gemma.loadedTools!.map((t) => t.name).toList();
+        expect(names, contains('get_device_info'));
+        expect(
+          names,
+          isNot(contains('set_timer')),
+          reason: 'set_timer has no macOS implementation (007 FR-008)',
+        );
+        // All eight registry tools minus set_timer.
+        expect(gemma.loadedTools!.length, ToolRegistry.specs.length - 1);
+        sub.close();
+      },
+    );
   });
 }

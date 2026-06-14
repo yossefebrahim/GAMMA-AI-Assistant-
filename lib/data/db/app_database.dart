@@ -6,10 +6,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 part 'app_database.g.dart';
 part 'daos/conversation_dao.dart';
 
-/// The app-private drift/SQLite database (R3). Stored under app-private storage, which is
-/// Credential-Encrypted by default on FBE devices — OS-level at-rest encryption, no app crypto
-/// (FR-032 / clarification Q3). Pass an explicit [executor] (e.g. `NativeDatabase.memory()`) in
-/// tests to run entirely off-device.
+/// The app-private drift/SQLite database (R3). Stored under app-private storage. On **Android** this
+/// is Credential-Encrypted by default on FBE devices — OS-level at-rest encryption, no app crypto
+/// (FR-032 / clarification Q3). On **macOS** (007) at-rest encryption is NOT implied by the app
+/// sandbox — it depends on the user having FileVault enabled. Pass an explicit [executor] (e.g.
+/// `NativeDatabase.memory()`) in tests to run entirely off-device.
 @DriftDatabase(
   tables: [Conversations, Messages, ModelInstalls, AppSettingsTable, Memories],
   daos: [ConversationDao],

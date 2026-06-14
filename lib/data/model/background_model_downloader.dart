@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:ai_assistant/core/model_catalog.dart';
+import 'package:ai_assistant/data/model/desktop_model_downloader.dart';
 import 'package:ai_assistant/domain/services/model_downloader.dart';
 import 'package:background_downloader/background_downloader.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -312,7 +313,10 @@ class BackgroundModelDownloader implements ModelDownloader {
   }
 }
 
-/// App-wide [ModelDownloader].
+/// App-wide [ModelDownloader]. macOS has no `background_downloader` implementation, so it uses the
+/// file-import-based [DesktopModelDownloader] (007 macOS support, FR-006); Android/iOS keep the
+/// foreground-service [BackgroundModelDownloader].
 final modelDownloaderProvider = Provider<ModelDownloader>((ref) {
+  if (Platform.isMacOS) return DesktopModelDownloader();
   return BackgroundModelDownloader();
 });

@@ -1,4 +1,4 @@
-platform :osx, '10.15'
+platform :osx, '11.0'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
@@ -38,5 +38,84 @@ end
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_macos_build_settings(target)
+  end
+
+  # [flutter_gemma] Setup LiteRT-LM macOS (007 macOS support, FR-004).
+  # flutter_gemma's hook/build.dart deliberately SKIPS bundling the three Apple accelerator
+  # dylibs through Native Assets on macOS (upstream #247: install_name_tool exceeds the 32-byte
+  # default headerpad in those upstream dylibs). So we copy them into the host app bundle as
+  # .framework bundles ourselves and re-point LiteRtLm's LC_LOAD_DYLIB. Ported verbatim from the
+  # plugin's example/macos/Podfile (flutter_gemma 0.15.3). Without this, runtime Metal GPU dlopen
+  # fails and the model load falls back to CPU or fails.
+  installer.aggregate_targets.each do |aggregate_target|
+    aggregate_target.user_targets.each do |user_target|
+      phase_name = '[flutter_gemma] Setup LiteRT-LM macOS'
+      existing = user_target.shell_script_build_phases.find { |p| p.name == phase_name }
+      phase = existing || user_target.new_shell_script_build_phase(phase_name)
+      # Run unconditionally and OUTSIDE dependency analysis. Without this, Xcode 15+/26 infers an
+      # implicit input dependency on ~/Library/Caches/flutter_gemma/native/macos_arm64/ (which the
+      # Flutter Assemble native-assets phase also touches), producing a "Cycle inside Flutter
+      # Assemble" build error. Marking the phase always-out-of-date drops that inferred dependency.
+      phase.always_out_of_date = '1'
+      phase.shell_script = <<~SHELL
+        set -e
+        FRAMEWORKS="${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/Frameworks"
+        if [ ! -d "${FRAMEWORKS}" ]; then
+          exit 0
+        fi
+        for base in LiteRtMetalAccelerator LiteRtTopKMetalSampler GemmaModelConstraintProvider; do
+          rm -f "${FRAMEWORKS}/lib${base}.dylib"
+        done
+        for candidate in \
+            "${HOME}/Library/Caches/flutter_gemma/native/macos_arm64" \
+            "${PODS_ROOT}/../Flutter/ephemeral/.symlinks/plugins/flutter_gemma/native/litert_lm/prebuilt/macos_arm64" \
+            "${SRCROOT}/../../native/litert_lm/prebuilt/macos_arm64"; do
+          if [ -f "${candidate}/libGemmaModelConstraintProvider.dylib" ]; then
+            PLUGIN_PREBUILT="${candidate}"
+            break
+          fi
+        done
+        if [ -z "${PLUGIN_PREBUILT:-}" ]; then
+          echo "[flutter_gemma] ERROR: Could not find macOS companion dylibs. Run 'flutter clean && flutter pub get'."
+          exit 1
+        fi
+        echo "[flutter_gemma] Using companion dylibs from: ${PLUGIN_PREBUILT}"
+        for base in GemmaModelConstraintProvider LiteRtMetalAccelerator LiteRtTopKMetalSampler; do
+          src="${PLUGIN_PREBUILT}/lib${base}.dylib"
+          if [ ! -f "${src}" ]; then
+            echo "[flutter_gemma] WARNING: ${src} not found — runtime dlopen will fail"
+            continue
+          fi
+          fw_dir="${FRAMEWORKS}/${base}.framework"
+          mkdir -p "${fw_dir}/Versions/A/Resources"
+          cp "${src}" "${fw_dir}/Versions/A/${base}"
+          install_name_tool -id "@rpath/${base}.framework/Versions/A/${base}" \\
+            "${fw_dir}/Versions/A/${base}" 2>/dev/null || true
+          (cd "${fw_dir}" && ln -sfh A Versions/Current && ln -sfh "Versions/Current/${base}" "${base}" && ln -sfh "Versions/Current/Resources" Resources)
+          cat > "${fw_dir}/Versions/A/Resources/Info.plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleExecutable</key><string>${base}</string>
+  <key>CFBundleIdentifier</key><string>dev.flutterberlin.flutter_gemma.${base}</string>
+  <key>CFBundleVersion</key><string>1</string>
+  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>CFBundlePackageType</key><string>FMWK</string>
+</dict>
+</plist>
+EOF
+          echo "[flutter_gemma] copied ${base}.framework"
+        done
+        LITERTLM="${FRAMEWORKS}/LiteRtLm.framework/Versions/A/LiteRtLm"
+        if [ -f "${LITERTLM}" ]; then
+          install_name_tool -change \\
+            @rpath/libGemmaModelConstraintProvider.dylib \\
+            @rpath/GemmaModelConstraintProvider.framework/Versions/A/GemmaModelConstraintProvider \\
+            "${LITERTLM}" 2>/dev/null || true
+          codesign --force --sign - "${LITERTLM}" 2>/dev/null || true
+        fi
+      SHELL
+    end
   end
 end

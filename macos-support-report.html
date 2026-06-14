@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>macOS Support — Overnight Report</title>
+<style>
+  :root{
+    --bg:#0a0a0a; --surface:#141414; --surface2:#1c1c1c; --line:#2a2a2a;
+    --text:#f2f2f2; --muted:#9a9a9a; --dim:#6a6a6a;
+    --accent:#D71921; --green:#3fb950; --amber:#d6a32a; --blue:#4a9eed;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);
+    line-height:1.6;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:980px;margin:0 auto;padding:48px 24px 96px}
+  header{border-bottom:1px solid var(--line);padding-bottom:28px;margin-bottom:36px}
+  .kicker{font-family:var(--mono);font-size:12px;letter-spacing:.18em;text-transform:uppercase;
+    color:var(--accent);margin:0 0 12px}
+  h1{font-size:34px;line-height:1.15;margin:0 0 14px;font-weight:700}
+  .meta{font-family:var(--mono);font-size:12.5px;color:var(--muted);display:flex;flex-wrap:wrap;gap:8px 22px}
+  .meta b{color:var(--text);font-weight:600}
+  h2{font-size:13px;font-family:var(--mono);letter-spacing:.14em;text-transform:uppercase;
+    color:var(--muted);margin:52px 0 18px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+  h3{font-size:17px;margin:26px 0 8px}
+  p{margin:0 0 14px;color:#dcdcdc}
+  a{color:var(--blue);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code{font-family:var(--mono);font-size:.88em;background:var(--surface2);border:1px solid var(--line);
+    border-radius:5px;padding:1.5px 6px;color:#e6e6e6}
+  .verdict{background:linear-gradient(180deg,var(--surface),#0f0f0f);border:1px solid var(--line);
+    border-left:3px solid var(--green);border-radius:12px;padding:24px 26px;margin:0 0 8px}
+  .verdict.amber{border-left-color:var(--amber)}
+  .verdict h3{margin:0 0 8px;font-size:19px}
+  .verdict p{margin:0;color:#cfcfcf}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:18px 0}
+  @media(max-width:680px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:18px 20px}
+  .card h4{margin:0 0 10px;font-size:14px;font-family:var(--mono);letter-spacing:.04em;text-transform:uppercase}
+  .card ul{margin:0;padding-left:18px;color:#cfcfcf;font-size:14.5px}
+  .card li{margin:5px 0}
+  .ok{color:var(--green)} .warn{color:var(--amber)} .no{color:var(--accent)} .dimv{color:var(--dim)}
+  table{width:100%;border-collapse:collapse;margin:10px 0 6px;font-size:14px}
+  th,td{text-align:left;padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+  td .id{font-family:var(--mono);color:var(--dim);font-size:12px}
+  .badge{font-family:var(--mono);font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;
+    white-space:nowrap;display:inline-block;border:1px solid}
+  .b-pass{color:var(--green);border-color:rgba(63,185,80,.4);background:rgba(63,185,80,.08)}
+  .b-part{color:var(--amber);border-color:rgba(214,163,42,.4);background:rgba(214,163,42,.08)}
+  .b-block{color:var(--accent);border-color:rgba(215,25,33,.4);background:rgba(215,25,33,.08)}
+  ol.journey{counter-reset:step;list-style:none;padding:0;margin:14px 0}
+  ol.journey li{position:relative;padding:14px 16px 14px 56px;background:var(--surface);border:1px solid var(--line);
+    border-radius:10px;margin:10px 0}
+  ol.journey li::before{counter-increment:step;content:counter(step);position:absolute;left:16px;top:14px;
+    width:26px;height:26px;border-radius:50%;background:var(--surface2);border:1px solid var(--line);
+    color:var(--muted);font-family:var(--mono);font-size:13px;display:flex;align-items:center;justify-content:center}
+  ol.journey li b{color:var(--text)}
+  ol.journey li.fixed::before{color:var(--green);border-color:rgba(63,185,80,.45)}
+  ol.journey li.caveat{border-left:3px solid var(--amber)}
+  ol.journey li.caveat::before{color:var(--amber);border-color:rgba(214,163,42,.45)}
+  pre{background:#060606;border:1px solid var(--line);border-radius:10px;padding:16px 18px;overflow-x:auto;
+    font-family:var(--mono);font-size:13px;color:#d6d6d6;margin:12px 0}
+  .files{font-family:var(--mono);font-size:13px}
+  .files div{padding:4px 0;border-bottom:1px dashed var(--line);color:#cfcfcf}
+  .files .tag{color:var(--dim);font-size:11px}
+  .pill{display:inline-block;font-family:var(--mono);font-size:11px;padding:2px 8px;border-radius:5px;
+    border:1px solid var(--line);background:var(--surface2);color:var(--muted);margin-right:6px}
+  footer{margin-top:60px;padding-top:22px;border-top:1px solid var(--line);color:var(--dim);
+    font-family:var(--mono);font-size:12px}
+  .lead{font-size:16px;color:#d8d8d8}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <p class="kicker">overnight autonomous run · /loop</p>
+  <h1>macOS (Apple&nbsp;Silicon) support — built, launched&nbsp;&amp;&nbsp;validated</h1>
+  <div class="meta">
+    <span><b>Project</b> GAMMA AI Assistant (ai_assistant)</span>
+    <span><b>Branch</b> 007-macos-support</span>
+    <span><b>Date</b> 2026-06-14</span>
+    <span><b>Host</b> macOS 26.5.1 · Apple Silicon · Xcode 26.5 · Flutter 3.44.1</span>
+  </div>
+</header>
+
+<div class="verdict">
+  <h3>✅ The app now builds, launches, and runs on macOS — validated on this Mac.</h3>
+  <p class="lead">A clean <code>flutter build macos</code> succeeds with the full flutter&nbsp;gemma Metal runtime
+  bundled, and the built app launches cleanly on Apple Silicon — the log confirms
+  <code>[FlutterGemmaDesktop] Plugin registered for desktop platform</code>, no crash, no preflight block.
+  All host gates stay green (689 tests, both seam guards, analyzer). Android is untouched.</p>
+</div>
+<p style="color:var(--muted);font-size:14px;margin:14px 2px 0">
+  Two honest caveats, detailed below: <b style="color:var(--amber)">(1)</b> the macOS build must be a
+  <b>clean</b> build — incremental builds hit an upstream Flutter&nbsp;3.44&nbsp;+&nbsp;Xcode&nbsp;26 native-assets
+  cycle; <b style="color:var(--amber)">(2)</b> on-device <b>inference itself wasn't exercised</b> because no
+  <code>.litertlm</code> model file exists on this machine (the 2.4&nbsp;GB model lives on the A34). The runtime
+  is bundled and registers correctly — it needs a model import to chat.
+</p>
+
+<h2>Validation scorecard</h2>
+<table>
+  <thead><tr><th>Criterion</th><th>Result</th><th>Evidence</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><span class="id">SC-001</span><br>macOS build succeeds, Metal runtime bundled</td>
+      <td><span class="badge b-pass">PASS</span></td>
+      <td><code>✓ Built ai_assistant.app</code>; <code>Contents/Frameworks/</code> contains LiteRtLm, LiteRtMetalAccelerator, GemmaModelConstraintProvider, StreamProxy + flutter_gemma. <span class="warn">Clean build required.</span></td>
+    </tr>
+    <tr>
+      <td><span class="id">SC-002</span><br>Launches on Apple Silicon, no preflight dead-end</td>
+      <td><span class="badge b-pass">PASS</span></td>
+      <td>Ran 20s without crash; <code>FlutterGemmaDesktop</code> registered; macOS preflight reports eligible (no <code>PreflightBlocked</code>).</td>
+    </tr>
+    <tr>
+      <td><span class="id">SC-003</span><br>Analyzer clean + tests pass (Android intact)</td>
+      <td><span class="badge b-pass">PASS</span></td>
+      <td><code>flutter analyze --fatal-infos --fatal-warnings</code>: no issues. <code>flutter test</code>: <b>689 passed</b> (688 + new macOS gating test).</td>
+    </tr>
+    <tr>
+      <td><span class="id">SC-004</span><br>Both seam guards green</td>
+      <td><span class="badge b-pass">PASS</span></td>
+      <td><code>check_plugin_seam.sh</code> + <code>check_network_seam.sh</code> both pass.</td>
+    </tr>
+    <tr>
+      <td><span class="id">SC-008</span><br>Tools correct on macOS</td>
+      <td><span class="badge b-pass">PASS</span></td>
+      <td><code>set_timer</code> absent from the declared list on macOS (new unit test); <code>get_device_info</code> returns real <code>MacosDeviceInfo</code> values.</td>
+    </tr>
+    <tr>
+      <td><span class="id">SC-005/6</span><br>Web research + BYOK key on macOS</td>
+      <td><span class="badge b-part">WIRED</span></td>
+      <td>Code is cross-platform + entitlements added; needs a Tavily key to exercise end-to-end (manual). Debug build omits the keychain entitlement (needs a dev cert) — see caveats.</td>
+    </tr>
+    <tr>
+      <td><span class="id">SC-007</span><br>Model loads + streams on Metal</td>
+      <td><span class="badge b-block">BLOCKED</span></td>
+      <td>No <code>.litertlm</code> model file on this Mac. Runtime is bundled and registers; import a model to verify inference.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>What macOS support means right now</h2>
+<div class="grid">
+  <div class="card">
+    <h4 class="ok">Works</h4>
+    <ul>
+      <li>Clean build → a runnable <code>.app</code> on Apple Silicon</li>
+      <li>Boots past onboarding (macOS preflight = eligible)</li>
+      <li>flutter&nbsp;gemma Metal/FFI backend registers</li>
+      <li>Drift/SQLite persistence (app-support container)</li>
+      <li>Tool set correct: no <code>set_timer</code>; real <code>get_device_info</code></li>
+      <li>Mic/camera permission no longer crashes (TCC-driven)</li>
+      <li>Desktop window default + minimum size</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4 class="warn">Partial / needs a manual step</h4>
+    <ul>
+      <li>Model acquisition: file-import flow (no in-app picker yet — drop a <code>.litertlm</code> into the app-support models dir; the adopt fast-path loads it)</li>
+      <li>On-device chat: runtime ready, needs a model file</li>
+      <li>Web research: wired; needs a Tavily key + (for persistence) a signed build</li>
+      <li>Source-URL chips: silent no-op on macOS (needs <code>url_launcher</code>)</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4 class="no">Blocked / out of scope</h4>
+    <ul>
+      <li>Incremental macOS builds (clean build works) — upstream cycle</li>
+      <li>Inference verification — needs the 2.4&nbsp;GB model on this Mac</li>
+      <li>Intel Macs (rejected at startup by design — no x86_64 backend)</li>
+      <li>Image grounding — already broken on flutter_gemma 0.15.3 (platform-independent)</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4 class="dimv">Untouched / safe</h4>
+    <ul>
+      <li>Android baseline — all 689 host tests still pass</li>
+      <li><code>flutter_gemma ^0.15.0</code> pin — no bump (the macOS backend ships in 0.15.3)</li>
+      <li>Both CI seam guards — green</li>
+      <li>No schema change, no migration (schemaVersion stays 6)</li>
+    </ul>
+  </div>
+</div>
+
+<h2>The build journey — five issues, fixed in order</h2>
+<p>The Dart port was clean on the first analyze. Getting a green native build took five fixes; the last is a documented limitation, not a defect in our code.</p>
+<ol class="journey">
+  <li class="fixed"><b>Code signing.</b> <code>keychain-access-groups</code> requires a real Apple Developer certificate. Removed it from the <b>debug</b> profile (kept in <b>release</b>) so local builds work without a signing team.</li>
+  <li class="fixed"><b>Deployment target.</b> The Runner target still compiled at macOS 10.15 while flutter&nbsp;gemma requires 11.0. Bumped <code>MACOSX_DEPLOYMENT_TARGET</code> to 11.0 across all three build configs.</li>
+  <li class="fixed"><b>Build-phase cycle (ours).</b> The flutter&nbsp;gemma Podfile script phase implicitly depended on the native-cache directory. Marked it <code>always_out_of_date = '1'</code> (out of dependency analysis).</li>
+  <li class="fixed"><b>Build-phase cycle (Flutter's).</b> Flutter Assemble's native-assets step lists the cache dir as an input while its output dylib lives inside it — a self-cycle Xcode&nbsp;26.5 rejects. Cleared by <code>flutter clean</code> (fresh dependency graph).</li>
+  <li class="caveat"><b>The cycle recurs on incremental builds — confirmed upstream after 3 fix attempts.</b> A clean build succeeds; a subsequent <code>flutter build</code>/<code>flutter run</code> without <code>flutter clean</code> re-derives the cyclic graph and fails. I tried: (a) <code>alwaysOutOfDate</code> on my own phase — fixed it for clean builds; (b) disabling Xcode-26 asset-symbol generation — no effect; (c) <code>alwaysOutOfDate</code> on Flutter's own “Flutter Assemble” Run Script — no effect, because that phase declares the native-cache dir <i>explicitly</i> via the Flutter-generated <code>FlutterInputs.xcfilelist</code> (the dir contains its own output dylib → a self-cycle the new build system rejects on incremental). Only a Flutter SDK or flutter_gemma change fixes it, and the plugin is pinned for the Android baseline. <b>Workaround: always clean-build macOS</b> (now wired as an opt-in <code>BUILD_MACOS=1</code> gate in verify.sh). cf. flutter/flutter #134256, #153842.</li>
+</ol>
+
+<h2>What changed</h2>
+
+<h3>Governance — constitution amendment (v2.0.0 → v2.1.0, MINOR)</h3>
+<p>macOS (Apple Silicon) is now a sanctioned <b>secondary</b> target. Principle&nbsp;IX no longer lists “non-Android platforms” as an absolute non-goal; Principle&nbsp;V gains a macOS device tier (Apple&nbsp;Silicon required, Intel rejected, ≥16&nbsp;GB for the E4B tier); Principle&nbsp;VIII allows file-import acquisition where there is no background-download service. Privacy, offline-first, and seam-testability are explicitly preserved. A maintainer note flags that you may prefer a MAJOR bump if you read relaxing the non-goal as backward-incompatible.</p>
+
+<h3>Spec-Kit artifacts</h3>
+<p><span class="pill">specs/007-macos-support/</span> <code>spec.md</code>, <code>plan.md</code> (Constitution Check re-run against v2.1.0 → PASS), and a living <code>PROGRESS.md</code>. Run <code>/speckit-plan</code> + <code>/speckit-tasks</code> to generate research/data-model/quickstart/tasks next.</p>
+
+<h3>Code &amp; config</h3>
+<div class="files">
+  <div><span class="tag">[entitlements]</span> macos/Runner/DebugProfile.entitlements, Release.entitlements — network.client, cs.disable-library-validation, audio-input, files.user-selected (+ keychain-access-groups in release only)</div>
+  <div><span class="tag">[plist]</span> macos/Runner/Info.plist — NSMicrophoneUsageDescription</div>
+  <div><span class="tag">[swift]</span> macos/Runner/MainFlutterWindow.swift — default 480×820 + min 380×600 window</div>
+  <div><span class="tag">[podfile]</span> macos/Podfile — osx 11.0 + flutter_gemma LiteRT-LM macOS post_install (always_out_of_date)</div>
+  <div><span class="tag">[xcode]</span> macos/Runner.xcodeproj/project.pbxproj — MACOSX_DEPLOYMENT_TARGET 11.0 ×3</div>
+  <div><span class="tag">[dart]</span> lib/core/platform/device_info_preflight_service.dart — macOS branch (eligible Apple Silicon, reject Intel)</div>
+  <div><span class="tag">[dart]</span> lib/domain/entities/device_capability.dart — DeviceCapability.fromMacProbe</div>
+  <div><span class="tag">[dart]</span> lib/infrastructure/media/permission_handler_service.dart — macOS camera/mic guard (no MissingPluginException)</div>
+  <div><span class="tag">[dart]</span> lib/data/model/desktop_model_downloader.dart — NEW macOS ModelDownloader (file-import / app-support storage)</div>
+  <div><span class="tag">[dart]</span> lib/data/model/background_model_downloader.dart — modelDownloaderProvider selects Desktop impl on macOS</div>
+  <div><span class="tag">[dart]</span> lib/features/chat/chat_providers.dart — isMacOsProvider + set_timer declaration gate</div>
+  <div><span class="tag">[dart]</span> lib/infrastructure/tools/device_info_tool_service.dart — macOS get_device_info branch</div>
+  <div><span class="tag">[test]</span> test/helpers/container_harness.dart + tool_gating_test.dart — isMacOs param + macOS gating test</div>
+  <div><span class="tag">[ci]</span> tool/verify.sh — opt-in macOS build gate (BUILD_MACOS=1, Darwin-only, clean build) — FR-017</div>
+  <div><span class="tag">[doc]</span> lib/data/db/app_database.dart — at-rest-encryption claim scoped to Android (macOS = FileVault) — FR-018</div>
+</div>
+
+<h2>Known limitations &amp; decisions for you</h2>
+<div class="grid">
+  <div class="card">
+    <h4>Limitations / deferred</h4>
+    <ul>
+      <li><b>Clean-build only</b> on macOS (incremental cycle — confirmed upstream after 3 fix attempts).</li>
+      <li><b>No in-app model picker</b> — needs the <code>file_selector</code> dep (a dependency decision left for you).</li>
+      <li><b>Composer Enter-to-send</b> deferred — fiddly Flutter focus/key interception on a multiline field; risky to ship without manual desktop verification. Recommended: <code>Focus.onKeyEvent</code> on the field's focus node, gated via <code>isMacOsProvider</code>.</li>
+      <li><b>Source-URL chips</b> are a silent no-op on macOS — needs <code>url_launcher</code> (dependency decision).</li>
+      <li><b>BYOK key persistence on a debug build</b> needs the keychain entitlement → a dev-team signed build, or set <code>useDataProtectionKeyChain:false</code> in the key store seam.</li>
+      <li><b>Inference unverified</b> on Metal — needs a model file; A34 spike findings don't transfer.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4>Decisions to make</h4>
+    <ul>
+      <li>App Sandbox on (App-Store viable, needs a signing team) vs off (simplest local dev)?</li>
+      <li>Add <code>file_selector</code> for the model-import picker, and <code>url_launcher</code> for source-URL chips?</li>
+      <li>Accept the “always clean-build macOS” rule, or invest in an upstream cycle fix?</li>
+      <li>Ship image input on macOS at all (grounding is broken regardless)?</li>
+    </ul>
+  </div>
+</div>
+
+<h2>How to build &amp; run it yourself</h2>
+<pre>cd ~/Work/ai_assistant
+flutter clean &amp;&amp; flutter pub get          # clean is REQUIRED for macOS (incremental cycle)
+flutter build macos --debug                # → build/macos/Build/Products/Debug/ai_assistant.app
+open build/macos/Build/Products/Debug/ai_assistant.app
+
+# to actually chat: drop a gemma-4-e2b.litertlm into the app-support models dir
+# (~/Library/Containers/&lt;bundle-id&gt;/Data/Library/Application Support/.../models/),
+# the adopt fast-path loads it. Then enter a Tavily key in settings for web research.</pre>
+
+<footer>
+  Generated overnight by Claude Code · /loop autonomous run · branch 007-macos-support · 2026-06-14<br>
+  Full detail: <span style="color:var(--muted)">specs/007-macos-support/PROGRESS.md · spec.md · plan.md</span> · constitution v2.1.0
+</footer>
+
+</div>
+</body>
+</html>
