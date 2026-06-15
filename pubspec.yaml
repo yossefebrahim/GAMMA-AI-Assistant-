@@ -106,7 +106,7 @@ dev_dependencies:
 
   # Direct raw-SQL access for the v1→v2 migration test (seed a v1 schema by hand). Already resolved
   # transitively via drift; pinned here only so the test may import it without a lint.
-  sqlite3: ^3.3.0
+  sqlite3: ^3.3.3
 
   # Deterministic timer control for the recording controller's 30 s cap / elapsed-tick tests
   # (003 T020). Already resolved transitively via flutter_test; pinned for the direct import.
