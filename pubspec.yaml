@@ -41,7 +41,7 @@ dependencies:
   drift_flutter: ^0.3.0
 
   # State management — manual Notifier, code-gen optional (R5).
-  flutter_riverpod: 3.3.1
+  flutter_riverpod: 3.3.2
 
   # Device preflight: physicalRamSize + supportedAbis (R4).
   device_info_plus: ^13.1.0
