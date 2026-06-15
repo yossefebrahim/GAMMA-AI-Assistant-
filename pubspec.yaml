@@ -31,7 +31,7 @@ dependencies:
   # LiteRT-LM (v0.12.0-a) failed to load the vision-enabled model, flipping capabilities to text-only
   # and surfacing "image removed — this model does not accept images". Reverted to ^0.15.0 (verified
   # 0.15.3). See specs/002-image-input-vision/diagnosis-and-audit-2026-06-08.md.
-  flutter_gemma: ^0.15.0
+  flutter_gemma: ^0.16.5
 
   # One-time model download under an Android foreground service (R2).
   background_downloader: ^9.5.5
