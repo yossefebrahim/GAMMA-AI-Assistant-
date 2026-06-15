@@ -62,7 +62,7 @@ dependencies:
   # indicator. Behind the AudioRecorderService seam; imported ONLY in lib/infrastructure/media/
   # (enforced by tool/check_plugin_seam.sh). Sanctioned fallback if 7.x misbehaves on-device: ^6.0.0
   # (the version flutter_gemma's own example proves against this exact consumer).
-  record: ^7.0.0
+  record: ^7.1.0
 
   # Composer-preview playback ONLY (003 R4, spec Q2 — history chips are static). Behind the
   # AudioPreviewPlayer seam; imported ONLY in lib/infrastructure/media/.
