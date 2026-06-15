@@ -67,6 +67,35 @@ class DeviceCapability {
     );
   }
 
+  /// Derive a capability verdict for macOS (Apple Silicon) — 007 macOS support, constitution v2.1.0
+  /// Principle V macOS tier. The Android `arm64-v8a` ABI string and the Android RAM under-reporting
+  /// do NOT apply here: macOS reports full physical (unified) memory and Apple Silicon reports
+  /// `arm64`. Intel (x86_64) Macs are reported [IneligibleReason.unsupportedAbi] because
+  /// flutter_gemma ships no x86_64 desktop backend — caught up front, never a runtime native-load
+  /// crash (FR-002).
+  factory DeviceCapability.fromMacProbe({
+    required int ramMb,
+    required bool isAppleSilicon,
+  }) {
+    final meetsRamBaseline = ramMb >= ramBaselineMb;
+    final isEligible = isAppleSilicon && meetsRamBaseline;
+    final IneligibleReason? reason = isEligible
+        ? null
+        : !isAppleSilicon
+        ? IneligibleReason.unsupportedAbi
+        : IneligibleReason.insufficientMemory;
+    return DeviceCapability(
+      ramMb: ramMb,
+      abis: List.unmodifiable(
+        isAppleSilicon ? const <String>['arm64'] : const <String>['x86_64'],
+      ),
+      meetsRamBaseline: meetsRamBaseline,
+      supportsArm64: isAppleSilicon,
+      isEligible: isEligible,
+      reason: reason,
+    );
+  }
+
   /// Eligible device that is still below the comfortable 8 GB recommendation (informational only,
   /// never a block). Drives the US5 soft-warn band messaging.
   bool get isSoftWarn => isEligible && ramMb < recommendedRamMb;

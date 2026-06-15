@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:ai_assistant/core/model_catalog.dart';
 import 'package:ai_assistant/core/tools/tool_registry.dart';
 import 'package:ai_assistant/data/model/background_model_downloader.dart';
@@ -28,6 +30,14 @@ class ModelUnavailableException implements Exception {
 final installedModelPathProvider = FutureProvider<String?>((ref) async {
   return ref.read(modelDownloaderProvider).installedModelPath();
 });
+
+/// Whether the app is running on macOS — an OVERRIDABLE provider so the platform-specific tool
+/// declaration gate (007 macOS support, FR-008) is testable without depending on the host platform
+/// (host tests run on macOS). Defaults to the real platform; the test harness pins it to false so
+/// existing tests exercise the Android tool set. macOS drops `set_timer` from the DECLARED list
+/// (its Android ACTION_SET_TIMER intent has no macOS path) while the spec stays in [ToolRegistry]
+/// so historical Android tool turns still replay.
+final isMacOsProvider = Provider<bool>((ref) => Platform.isMacOS);
 
 /// The capabilities declared by [ModelCatalog] — wrapped in a provider so integration tests
 /// can override them (e.g. `ModelCapabilities.textOnly`) without touching the catalog constant.
@@ -76,8 +86,16 @@ final modelSessionProvider = FutureProvider.autoDispose<GemmaService>((
     final effectiveWebEnabled = (override ?? WebAccessOverride.inherit)
         .effectiveWebEnabled(globalWebEnabled);
     final hasValidKey = await ref.read(secureKeyStoreProvider).hasValidKey();
+    // macOS (007, FR-008): drop `set_timer` from the DECLARED device tools — its
+    // ACTION_SET_TIMER intent (android_intent_plus) has no macOS implementation, so declaring it
+    // would only ever produce a confusing failure. The spec remains in [ToolRegistry] (byName still
+    // resolves) so a replayed Android conversation's set_timer turn still renders.
+    final isMacOs = ref.read(isMacOsProvider);
     final tools = <ToolSpec>[
-      if (functionCalling) ...ToolRegistry.deviceTools,
+      if (functionCalling)
+        ...ToolRegistry.deviceTools.where(
+          (t) => !(isMacOs && t.name == 'set_timer'),
+        ),
       if (functionCalling && memoryEnabled) ...ToolRegistry.memoryTools,
       if (functionCalling && effectiveWebEnabled && hasValidKey)
         ...ToolRegistry.webTools,

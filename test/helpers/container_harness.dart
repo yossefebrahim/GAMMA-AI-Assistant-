@@ -1,6 +1,7 @@
 import 'package:ai_assistant/data/db/app_database.dart';
 import 'package:ai_assistant/domain/services/network_research_service.dart';
 import 'package:ai_assistant/domain/services/secure_key_store.dart';
+import 'package:ai_assistant/features/chat/chat_providers.dart' show isMacOsProvider;
 import 'package:ai_assistant/features/chat/tool_handler_providers.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 // Riverpod 3 splits its public surface across entrypoints; the `Override` type lives in `misc`.
@@ -27,6 +28,7 @@ ProviderContainer makeContainer({
   AppDatabase? database,
   SecureKeyStore? secureKeyStore,
   NetworkResearchService? networkResearch,
+  bool isMacOs = false,
 }) {
   final db = database ?? newTestDatabase();
   return ProviderContainer(
@@ -41,6 +43,11 @@ ProviderContainer makeContainer({
       networkResearchServiceProvider.overrideWithValue(
         networkResearch ?? FakeNetworkResearchService(),
       ),
+      // Pin the platform gate (007 macOS support, FR-008) so tests don't depend on the host
+      // platform — host tests run on macOS, where the real provider would drop `set_timer`. Pass
+      // `isMacOs: true` to exercise the macOS tool-declaration path. Kept OUT of [overrides] (like
+      // [secureKeyStore]) to avoid Riverpod's duplicate-override assertion.
+      isMacOsProvider.overrideWithValue(isMacOs),
       ...overrides,
     ],
   );

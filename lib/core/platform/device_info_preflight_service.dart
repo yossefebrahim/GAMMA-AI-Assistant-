@@ -16,8 +16,20 @@ class DeviceInfoPreflightService implements DevicePreflightService {
 
   @override
   Future<DeviceCapability> check() async {
-    // Android-only (Principle IX). On any other platform there is no arm64 Android device, so
-    // report ineligible-by-ABI rather than crashing.
+    // macOS (Apple Silicon) is a sanctioned secondary target (007, constitution v2.1.0). Read real
+    // unified memory (`memorySize`, bytes) + arch; Intel reports ineligible-by-ABI (no x86_64
+    // backend) rather than crashing at native load (FR-002).
+    if (Platform.isMacOS) {
+      final info = await _deviceInfo.macOsInfo;
+      final ramMb = (info.memorySize / (1024 * 1024)).round();
+      final isAppleSilicon = info.arch.toLowerCase().contains('arm');
+      return DeviceCapability.fromMacProbe(
+        ramMb: ramMb,
+        isAppleSilicon: isAppleSilicon,
+      );
+    }
+    // Other non-Android platforms (Windows/Linux/web) remain NON-GOALS (Principle IX). Report
+    // ineligible-by-ABI rather than crashing.
     if (!Platform.isAndroid) {
       return DeviceCapability.fromProbe(ramMb: 0, abis: const <String>[]);
     }

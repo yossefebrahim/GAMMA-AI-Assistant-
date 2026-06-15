@@ -74,6 +74,23 @@ else
   step "Android build smoke — SKIPPED (SKIP_BUILD=1)"
 fi
 
+# macOS (Apple Silicon) build smoke — OPT-IN via BUILD_MACOS=1, Darwin hosts only (007).
+# A CLEAN build is REQUIRED: flutter_gemma 0.15.3 native assets + Xcode 26 hit a "Cycle inside
+# Flutter Assemble" on INCREMENTAL builds (clean builds are unaffected) — see specs/007-macos-support.
+if [[ "${BUILD_MACOS:-0}" == "1" ]]; then
+  if [[ "$(uname)" == "Darwin" ]]; then
+    step "Build debug macOS app (Apple Silicon, clean)"
+    if flutter clean >/dev/null && flutter pub get >/dev/null && flutter build macos --debug; then
+      printf '%s✓ Build debug macOS app%s\n' "$grn" "$rst"
+    else
+      printf '%s✗ Build debug macOS app%s\n' "$red" "$rst"
+      failures+=("Build debug macOS app")
+    fi
+  else
+    step "macOS build smoke — SKIPPED (not a Darwin host)"
+  fi
+fi
+
 echo
 if [[ ${#failures[@]} -eq 0 ]]; then
   printf '%s✓ All required gates passed.%s\n' "$grn" "$rst"
