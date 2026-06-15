@@ -37,7 +37,7 @@ dependencies:
   background_downloader: ^9.5.5
 
   # Reactive, type-safe SQLite persistence (R3). 2.33/0.3 ride sqlite3 ^3.x (shared with gemma).
-  drift: ^2.33.0
+  drift: ^2.34.0
   drift_flutter: ^0.3.0
 
   # State management — manual Notifier, code-gen optional (R5).
